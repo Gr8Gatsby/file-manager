@@ -2,10 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import themePlugin from "@replit/vite-plugin-shadcn-theme-json";
 import path from "path";
+import cspPlugin from "./client/plugins/vite-plugin-csp";
 
 export default defineConfig({
-  plugins: [react(), themePlugin()],
-  base: "/file-manager/",
+  plugins: [react(), themePlugin(), cspPlugin()],
+  base: process.env.GITHUB_PAGES === 'true' ? '/file-manager/' : '/',
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "client", "src"),
@@ -18,11 +19,10 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        // Remove the extra file-manager prefix since base already adds it
-        assetFileNames: "assets/[name]-[hash][extname]",
-        chunkFileNames: "assets/[name]-[hash].js",
-        entryFileNames: "assets/[name]-[hash].js",
-      },
-    },
-  },
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js'
+      }
+    }
+  }
 });
