@@ -27,6 +27,7 @@ interface FileGridProps {
     type: string;
     size: number;
     compressedSize: number;
+    createdAt: Date;
   }>;
   onDelete: (id: string) => void;
   onSelect: (id: string) => void;
@@ -71,9 +72,20 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
                 <h3 className="font-medium truncate">{file.name}</h3>
               </CardContent>
               <CardFooter className="text-sm text-muted-foreground">
-                <div className="flex justify-between w-full">
-                  <span>{formatSize(file.size)}</span>
-                  <span>{Math.round((1 - file.compressedSize / file.size) * 100)}% compressed</span>
+                <div className="flex flex-col w-full gap-1">
+                  <div className="flex justify-between">
+                    <span>{formatSize(file.size)}</span>
+                    <span>{Math.round((1 - file.compressedSize / file.size) * 100)}% compressed</span>
+                  </div>
+                  <div className="text-xs">
+                    Added {new Date(file.createdAt).toLocaleDateString(undefined, {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </div>
                 </div>
               </CardFooter>
             </Card>
