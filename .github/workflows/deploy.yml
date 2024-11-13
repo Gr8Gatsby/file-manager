@@ -34,14 +34,19 @@ jobs:
         
       - name: Build
         run: npm run build
+        env:
+          GITHUB_PAGES: true
         
       - name: Setup Pages
         uses: actions/configure-pages@v4
         
+      - name: Copy CNAME file
+        run: cp client/public/CNAME dist/public/
+        
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
+          path: './dist/public'
           
       - name: Deploy to GitHub Pages
         id: deployment

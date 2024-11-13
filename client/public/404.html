@@ -3,13 +3,14 @@
   <head>
     <meta charset="utf-8">
     <title>File Manager</title>
-    <script>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'nonce-file-manager-app';">
+    <script nonce="file-manager-app">
       // Single Page Apps for GitHub Pages
       // Handles routing by redirecting to index.html with the correct path
       (function() {
         const path = window.location.pathname + window.location.search;
         localStorage.setItem('spa-path', path);
-        window.location.href = '/'; // Will redirect to index.html
+        window.location.href = '/file-manager/'; // Redirect to the correct base path
       })();
     </script>
   </head>
