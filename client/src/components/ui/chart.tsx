@@ -1,6 +1,6 @@
 import * as React from "react"
 import * as RechartsPrimitive from "recharts"
-import { cn } from "@/lib/utils"
+import { cn, createElementWithNonce } from "@/lib/utils"
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const
@@ -83,12 +83,8 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   React.useEffect(() => {
     if (!colorConfig.length) return;
 
-    // Create style element with nonce from window.__CSP_NONCE__
-    const styleEl = document.createElement('style');
-    const nonce = (window as any).__CSP_NONCE__;
-    if (nonce) {
-      styleEl.setAttribute('nonce', nonce);
-    }
+    // Use createElementWithNonce utility to create style element with proper nonce
+    const styleEl = createElementWithNonce('style');
 
     // Generate CSS variables for each theme and color
     const cssRules = colorConfig.map(([key, itemConfig]) =>
