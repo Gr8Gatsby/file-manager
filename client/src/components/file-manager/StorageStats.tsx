@@ -43,8 +43,8 @@ export function StorageStats({ total, compressed }: StorageStatsProps) {
                 value={savedPercentage} 
                 className="h-2.5"
                 style={{
-                  '--progress-background': 'hsl(var(--foreground))',
-                  '--progress-foreground': 'hsl(var(--foreground))',
+                  '--progress-background': 'hsl(var(--background))',
+                  '--progress-foreground': 'hsl(var(--primary))',
                   'backgroundColor': 'hsl(var(--muted))',
                 } as React.CSSProperties}
               />
