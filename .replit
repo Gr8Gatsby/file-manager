@@ -55,7 +55,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run dev"
+args = "VITE_PUBLIC_PATH=/file-manager/ VITE_BASE_URL=/file-manager/ npm run dev"
 waitForPort = 5000
 
 [[workflows.workflow]]
