@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -19,21 +19,62 @@ interface FilePreviewProps {
 export function FilePreview({ file, onClose }: FilePreviewProps) {
   const [content, setContent] = useState<string | Array<any> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [imageOrientation, setImageOrientation] = useState<number>(1);
 
   useEffect(() => {
-    if (!file) return;
+    let blobUrl: string | null = null;
 
     const loadContent = async () => {
+      if (!file) return;
+
+      setIsLoading(true);
+      setError(null);
+      setContent(null);
+
       try {
         console.log(`Loading preview for file: ${file.name} (${file.type})`);
         
         if (file.type.startsWith('image/')) {
           console.log('Processing image file');
-          const url = URL.createObjectURL(file.data);
-          setContent(url);
+          
+          // Read image orientation metadata
+          const arrayBuffer = await file.data.arrayBuffer();
+          const view = new DataView(arrayBuffer);
+          let offset = 0;
+          
+          // Check for EXIF marker
+          if (view.getUint16(0) === 0xFFD8) { // JPEG marker
+            offset = 2;
+            while (offset < view.byteLength) {
+              if (view.getUint16(offset) === 0xFFE1) { // APP1 marker
+                const exifOffset = offset + 4;
+                if (view.getUint32(exifOffset) === 0x45786966) { // 'Exif'
+                  const tiffOffset = exifOffset + 6;
+                  const littleEndian = view.getUint16(tiffOffset) === 0x4949;
+                  const ifdOffset = view.getUint32(tiffOffset + 4, littleEndian);
+                  const entries = view.getUint16(tiffOffset + ifdOffset, littleEndian);
+                  
+                  for (let i = 0; i < entries; i++) {
+                    const entryOffset = tiffOffset + ifdOffset + 2 + (i * 12);
+                    const tag = view.getUint16(entryOffset, littleEndian);
+                    if (tag === 0x0112) { // Orientation tag
+                      setImageOrientation(view.getUint16(entryOffset + 8, littleEndian));
+                      break;
+                    }
+                  }
+                }
+                break;
+              }
+              offset += 2 + view.getUint16(offset + 2);
+            }
+          }
+          
+          blobUrl = URL.createObjectURL(file.data);
+          setContent(blobUrl);
           console.log('Image blob URL created successfully');
         } else {
-          // For text-based files, decompress the blob first
+          // For text-based files
           const decompressedStream = new DecompressionStream('gzip');
           const writer = decompressedStream.writable.getWriter();
           writer.write(await file.data.arrayBuffer());
@@ -50,7 +91,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                 if (results.errors.length > 0) {
                   throw new Error(`Parse error: ${results.errors[0].message}`);
                 }
-                // Ensure all values are properly stringified
                 const processedData = results.data.map(row => 
                   Object.fromEntries(
                     Object.entries(row).map(([key, value]) => [
@@ -75,12 +115,16 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             console.log('JSON parsed successfully');
           }
         }
-        
-        setError(null);
       } catch (err) {
         console.error('Error loading file:', err);
         setError(err instanceof Error ? err.message : 'Failed to load file content');
         setContent(null);
+        if (blobUrl) {
+          URL.revokeObjectURL(blobUrl);
+          blobUrl = null;
+        }
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -94,6 +138,19 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   }, [file]);
 
   if (!file) return null;
+
+  const getOrientationStyle = () => {
+    switch (imageOrientation) {
+      case 2: return 'scale-x-[-1]';
+      case 3: return 'rotate-180';
+      case 4: return 'scale-y-[-1]';
+      case 5: return 'rotate-90 scale-x-[-1]';
+      case 6: return 'rotate-90';
+      case 7: return 'rotate-270 scale-x-[-1]';
+      case 8: return 'rotate-270';
+      default: return '';
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -118,15 +175,21 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
+              ) : isLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
               ) : (
                 <>
                   {file.type.startsWith('image/') && (
-                    <img
-                      src={content as string}
-                      alt={file.name}
-                      className="max-w-full h-auto"
-                      onError={() => setError('Failed to load image')}
-                    />
+                    <div className="relative">
+                      <img
+                        src={content as string}
+                        alt={file.name}
+                        className={`max-w-full h-auto mx-auto ${getOrientationStyle()}`}
+                        onError={() => setError('Failed to load image')}
+                      />
+                    </div>
                   )}
                   
                   {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && content.length > 0 && (
