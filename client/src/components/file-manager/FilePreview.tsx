@@ -50,10 +50,20 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                 if (results.errors.length > 0) {
                   throw new Error(`Parse error: ${results.errors[0].message}`);
                 }
-                console.log(`Parsed ${results.data.length} rows successfully`);
-                setContent(results.data);
+                // Ensure all values are properly stringified
+                const processedData = results.data.map(row => 
+                  Object.fromEntries(
+                    Object.entries(row).map(([key, value]) => [
+                      key,
+                      value === null || value === undefined ? '' : value
+                    ])
+                  )
+                );
+                console.log(`Parsed ${processedData.length} rows successfully`);
+                setContent(processedData);
               },
               header: true,
+              skipEmptyLines: true,
               error: (error) => {
                 throw new Error(`Parse error: ${error.message}`);
               }
@@ -119,7 +129,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                     />
                   )}
                   
-                  {file.type === 'text/csv' && Array.isArray(content) && content.length > 0 && (
+                  {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && content.length > 0 && (
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse">
                         <thead>
@@ -136,7 +146,9 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                             <tr key={i} className="even:bg-muted/50">
                               {Object.values(row).map((cell, j) => (
                                 <td key={j} className="border p-2">
-                                  {cell as string}
+                                  {typeof cell === 'object' && cell !== null 
+                                    ? JSON.stringify(cell)
+                                    : String(cell)}
                                 </td>
                               ))}
                             </tr>
