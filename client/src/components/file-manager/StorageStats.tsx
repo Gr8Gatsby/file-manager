@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -18,7 +17,7 @@ export function StorageStats({ total, compressed }: StorageStatsProps) {
   
   return (
     <Card className="backdrop-blur-lg bg-background/95">
-      <Collapsible defaultOpen={false} onOpenChange={setIsOpen}>
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-xl font-semibold">Storage Usage</CardTitle>
           <CollapsibleTrigger asChild>
@@ -34,18 +33,17 @@ export function StorageStats({ total, compressed }: StorageStatsProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-sm font-medium">Space Saved</span>
-                <span className="text-sm font-medium">{savedPercentage}%</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-foreground">Space Saved</span>
+                <span className="text-sm font-medium text-foreground">{savedPercentage}%</span>
               </div>
-              <Progress 
-                value={savedPercentage} 
-                className="h-2.5 bg-muted/50"
-                style={{
-                  '--progress-fill': 'hsl(var(--primary))'
-                }}
-              />
+              <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full w-full flex-1 bg-foreground transition-all"
+                  style={{ transform: `translateX(-${100 - savedPercentage}%)` }}
+                />
+              </div>
             </div>
             
             <CollapsibleContent>
