@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { fileDB } from '@/lib/db';
 import { compressBlob } from '@/lib/compression';
 import { FileGrid } from '@/components/file-manager/FileGrid';
 import { FilePreview } from '@/components/file-manager/FilePreview';
 import { StorageStats } from '@/components/file-manager/StorageStats';
 import { UploadZone } from '@/components/file-manager/UploadZone';
+import { SearchBar } from '@/components/file-manager/SearchBar';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { useToast } from '@/hooks/use-toast';
 
@@ -12,6 +13,10 @@ export function FileManager() {
   const [files, setFiles] = useState<any[]>([]);
   const [selectedFile, setSelectedFile] = useState<any>(null);
   const [storageStats, setStorageStats] = useState({ total: 0, compressed: 0 });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [fileType, setFileType] = useState('all');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -71,6 +76,38 @@ export function FileManager() {
     setSelectedFile(file);
   };
 
+  const filteredFiles = useMemo(() => {
+    return files
+      .filter(file => {
+        const matchesSearch = file.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesType = fileType === 'all' ||
+          (fileType === 'image' && file.type.startsWith('image/')) ||
+          (fileType === 'csv' && file.type === 'text/csv') ||
+          (fileType === 'tsv' && file.type === 'text/tab-separated-values') ||
+          (fileType === 'json' && file.type === 'application/json');
+        return matchesSearch && matchesType;
+      })
+      .sort((a, b) => {
+        let comparison = 0;
+        
+        switch (sortBy) {
+          case 'name':
+            comparison = a.name.localeCompare(b.name);
+            break;
+          case 'size':
+            comparison = a.size - b.size;
+            break;
+          case 'date':
+            comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+            break;
+          default:
+            comparison = 0;
+        }
+        
+        return sortDirection === 'asc' ? comparison : -comparison;
+      });
+  }, [files, searchTerm, sortBy, sortDirection, fileType]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-10 backdrop-blur-lg border-b border-border bg-background/95 dark:bg-background/90">
@@ -97,8 +134,19 @@ export function FileManager() {
             </div>
           </div>
 
+          <SearchBar
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+            sortDirection={sortDirection}
+            onSortDirectionChange={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+            fileType={fileType}
+            onFileTypeChange={setFileType}
+          />
+
           <FileGrid
-            files={files}
+            files={filteredFiles}
             onDelete={handleDelete}
             onSelect={handleFileSelect}
           />
