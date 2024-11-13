@@ -38,7 +38,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   const [content, setContent] = useState<string | Array<any> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [imageOrientation, setImageOrientation] = useState<number>(1);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const handleImageError = useCallback((error: Error) => {
@@ -59,73 +58,32 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       setImageDimensions(null);
 
       try {
-        console.log(`Loading preview for file: ${file.name} (${file.type})`);
+        console.log('Processing image file:', file.type, file.data.size);
         
         if (file.type.startsWith('image/')) {
-          console.log('Processing image file');
-          
-          // Validate MIME type
-          const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-          if (!validImageTypes.includes(file.type)) {
-            throw new Error(`Unsupported image type: ${file.type}`);
-          }
-
-          // Read image metadata
-          const arrayBuffer = await file.data.arrayBuffer();
-          const view = new DataView(arrayBuffer);
-          
-          // Get image dimensions and orientation
-          const img = new Image();
-          blobUrl = URL.createObjectURL(file.data);
-          
-          await new Promise((resolve, reject) => {
+          try {
+            // Create blob URL immediately
+            blobUrl = URL.createObjectURL(new Blob([file.data], { type: file.type }));
+            console.log('Created blob URL:', blobUrl);
+            
+            const img = new Image();
             img.onload = () => {
               setImageDimensions({
                 width: img.naturalWidth,
                 height: img.naturalHeight
               });
-              resolve(null);
+              setContent(blobUrl);
+              setIsLoading(false);
             };
-            img.onerror = reject;
-            img.src = blobUrl!;
-          });
-
-          // Process EXIF data for JPEG
-          if (file.type === 'image/jpeg') {
-            let offset = 0;
-            if (view.getUint16(0) === 0xFFD8) {
-              offset = 2;
-              while (offset < view.byteLength) {
-                if (view.getUint16(offset) === 0xFFE1) {
-                  const exifOffset = offset + 4;
-                  if (view.getUint32(exifOffset) === 0x45786966) {
-                    const tiffOffset = exifOffset + 6;
-                    const littleEndian = view.getUint16(tiffOffset) === 0x4949;
-                    const ifdOffset = view.getUint32(tiffOffset + 4, littleEndian);
-                    const entries = view.getUint16(tiffOffset + ifdOffset, littleEndian);
-                    
-                    for (let i = 0; i < entries; i++) {
-                      const entryOffset = tiffOffset + ifdOffset + 2 + (i * 12);
-                      const tag = view.getUint16(entryOffset, littleEndian);
-                      if (tag === 0x0112) {
-                        setImageOrientation(view.getUint16(entryOffset + 8, littleEndian));
-                        break;
-                      }
-                    }
-                  }
-                  break;
-                }
-                offset += 2 + view.getUint16(offset + 2);
-              }
-            }
+            img.onerror = (e) => {
+              console.error('Image load error:', e);
+              throw new Error('Failed to load image');
+            };
+            img.src = blobUrl;
+          } catch (err) {
+            console.error('Image processing error:', err);
+            throw err;
           }
-          
-          setContent(blobUrl);
-          console.log('Image blob URL created successfully', {
-            dimensions: imageDimensions,
-            orientation: imageOrientation,
-            mimeType: file.type
-          });
         } else {
           // Text file handling
           const decompressedStream = new DecompressionStream('gzip');
@@ -184,26 +142,13 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
     loadContent();
 
     return () => {
-      if (typeof content === 'string' && content.startsWith('blob:')) {
-        URL.revokeObjectURL(content);
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
       }
     };
   }, [file]);
 
   if (!file) return null;
-
-  const getOrientationStyle = () => {
-    switch (imageOrientation) {
-      case 2: return 'scale-x-[-1]';
-      case 3: return 'rotate-180';
-      case 4: return 'scale-y-[-1]';
-      case 5: return 'rotate-90 scale-x-[-1]';
-      case 6: return 'rotate-90';
-      case 7: return 'rotate-270 scale-x-[-1]';
-      case 8: return 'rotate-270';
-      default: return '';
-    }
-  };
 
   return (
     <AnimatePresence>
@@ -240,7 +185,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                         <img
                           src={content as string}
                           alt={file.name}
-                          className={`max-w-full max-h-[80vh] object-contain ${getOrientationStyle()}`}
+                          className="max-w-full max-h-[80vh] object-contain"
                           style={{
                             width: imageDimensions ? `${imageDimensions.width}px` : 'auto',
                             height: imageDimensions ? `${imageDimensions.height}px` : 'auto'

@@ -20,10 +20,13 @@ export function StorageStats({ total, compressed }: StorageStatsProps) {
         <div className="space-y-4">
           <div>
             <div className="flex justify-between mb-2">
-              <span className="text-sm font-medium">Space Saved</span>
-              <span className="text-sm text-muted-foreground">{savedPercentage}%</span>
+              <span className="text-sm font-medium text-foreground">Space Saved</span>
+              <span className="text-sm text-foreground">{savedPercentage}%</span>
             </div>
-            <Progress value={savedPercentage} className="h-2" />
+            <Progress 
+              value={savedPercentage} 
+              className="h-2 bg-muted-foreground/20 dark:bg-muted" 
+            />
           </div>
           
           <div className="grid grid-cols-2 gap-4">

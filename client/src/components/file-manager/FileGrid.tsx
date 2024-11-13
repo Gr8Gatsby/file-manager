@@ -37,11 +37,12 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const getFileIcon = (type: string) => {
+    const iconClass = "w-6 h-6 text-foreground dark:text-primary";
     if (type.startsWith('image/')) 
-      return <Image className="w-6 h-6 text-primary dark:text-primary" />;
+      return <Image className={iconClass} />;
     if (type === 'text/csv' || type === 'text/tab-separated-values') 
-      return <FileText className="w-6 h-6 text-primary dark:text-primary" />;
-    return <File className="w-6 h-6 text-primary dark:text-primary" />;
+      return <FileText className={iconClass} />;
+    return <File className={iconClass} />;
   };
 
   return (
