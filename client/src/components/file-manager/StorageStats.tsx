@@ -36,15 +36,16 @@ export function StorageStats({ total, compressed }: StorageStatsProps) {
           <div className="space-y-4">
             <div>
               <div className="flex justify-between mb-2">
-                <span className="text-sm font-medium text-foreground dark:text-foreground">Space Saved</span>
-                <span className="text-sm font-medium text-primary dark:text-primary">{savedPercentage}%</span>
+                <span className="text-sm font-medium text-foreground">Space Saved</span>
+                <span className="text-sm font-medium text-foreground">{savedPercentage}%</span>
               </div>
               <Progress 
                 value={savedPercentage} 
-                className="h-2.5 bg-muted/20 dark:bg-muted-foreground/20"
+                className="h-2.5"
                 style={{
-                  '--progress-background': 'hsl(var(--primary))',
+                  '--progress-background': 'hsl(var(--foreground))',
                   '--progress-foreground': 'hsl(var(--foreground))',
+                  'backgroundColor': 'hsl(var(--muted))',
                 } as React.CSSProperties}
               />
             </div>
@@ -56,7 +57,7 @@ export function StorageStats({ total, compressed }: StorageStatsProps) {
                   animate={{ opacity: 1, y: 0 }}
                   className="rounded-lg p-3 bg-muted/80 dark:bg-muted/50"
                 >
-                  <div className="text-sm font-medium text-foreground dark:text-muted-foreground">Original Size</div>
+                  <div className="text-sm font-medium text-foreground">Original Size</div>
                   <div className="text-2xl font-bold text-foreground">{formatSize(total)}</div>
                 </motion.div>
                 
@@ -65,8 +66,8 @@ export function StorageStats({ total, compressed }: StorageStatsProps) {
                   animate={{ opacity: 1, y: 0 }}
                   className="rounded-lg p-3 bg-muted/80 dark:bg-muted/50"
                 >
-                  <div className="text-sm font-medium text-foreground dark:text-muted-foreground">Compressed Size</div>
-                  <div className="text-2xl font-bold text-primary">{formatSize(compressed)}</div>
+                  <div className="text-sm font-medium text-foreground">Compressed Size</div>
+                  <div className="text-2xl font-bold text-foreground">{formatSize(compressed)}</div>
                 </motion.div>
               </div>
             </CollapsibleContent>
