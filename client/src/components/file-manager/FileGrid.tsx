@@ -37,14 +37,16 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const getFileIcon = (type: string) => {
-    if (type.startsWith('image/')) return <Image className="w-8 h-8 text-primary" />;
-    if (type === 'text/csv' || type === 'text/tab-separated-values') return <FileText className="w-8 h-8 text-primary" />;
-    return <File className="w-8 h-8 text-primary" />;
+    if (type.startsWith('image/')) 
+      return <Image className="w-6 h-6 text-primary dark:text-primary" />;
+    if (type === 'text/csv' || type === 'text/tab-separated-values') 
+      return <FileText className="w-6 h-6 text-primary dark:text-primary" />;
+    return <File className="w-6 h-6 text-primary dark:text-primary" />;
   };
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2">
         {files.map((file) => (
           <motion.div
             key={file.id}
@@ -54,13 +56,13 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
             whileHover={{ scale: 1.02 }}
             className="cursor-pointer"
           >
-            <Card className="backdrop-blur-lg bg-background/80">
-              <CardHeader className="flex flex-row items-center justify-between p-2">
+            <Card className="backdrop-blur-lg bg-background/80 hover:bg-background/90">
+              <CardHeader className="flex flex-row items-center justify-between p-1.5">
                 {getFileIcon(file.type)}
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-6 w-6"
                   onClick={(e) => {
                     e.stopPropagation();
                     setDeleteId(file.id);
@@ -71,15 +73,17 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
               </CardHeader>
               <CardContent 
                 onClick={() => onSelect(file.id)}
-                className="px-2 pb-2 pt-0"
+                className="px-1.5 pb-1.5 pt-0"
               >
-                <h3 className="font-medium text-sm truncate">{file.name}</h3>
-                <div className="flex justify-between items-center mt-1">
-                  <span className="text-xs text-muted-foreground">{formatSize(file.size)}</span>
-                  <span className="text-xs text-muted-foreground">{Math.round((1 - file.compressedSize / file.size) * 100)}% saved</span>
+                <h3 className="font-medium text-xs truncate text-foreground">{file.name}</h3>
+                <div className="flex justify-between items-center mt-0.5">
+                  <span className="text-[10px] text-muted-foreground/90">{formatSize(file.size)}</span>
+                  <span className="text-[10px] text-muted-foreground/90">
+                    {Math.round((1 - file.compressedSize / file.size) * 100)}% saved
+                  </span>
                 </div>
               </CardContent>
-              <CardFooter className="px-2 py-1 text-[11px] text-muted-foreground border-t">
+              <CardFooter className="px-1.5 py-0.5 text-[10px] text-muted-foreground/80 border-t">
                 {new Date(file.createdAt).toLocaleDateString(undefined, {
                   month: 'short',
                   day: 'numeric',
