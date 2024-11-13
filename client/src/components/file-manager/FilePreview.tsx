@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -39,12 +39,27 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
 
   const handleImageError = useCallback((error: Error) => {
     console.error('Image loading error:', error);
     setError(`Failed to load image: ${error.message}`);
     setIsLoading(false);
   }, []);
+
+  // Cleanup function for blob URLs
+  const cleanupBlobUrl = useCallback(() => {
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      cleanupBlobUrl();
+    };
+  }, [cleanupBlobUrl]);
 
   useEffect(() => {
     const loadContent = async () => {
@@ -54,51 +69,55 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       setError(null);
       setContent(null);
       setImageDimensions(null);
+      cleanupBlobUrl();
 
       try {
         console.log('Processing file:', file.type, file.data.size);
         
+        // Decompress the file data regardless of type
+        const decompressedStream = new DecompressionStream('gzip');
+        const writer = decompressedStream.writable.getWriter();
+        writer.write(await file.data.arrayBuffer());
+        writer.close();
+        
+        const decompressedBlob = await new Response(decompressedStream.readable).blob();
+        
         if (file.type.startsWith('image/')) {
           try {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              if (e.target?.result) {
-                const img = new Image();
-                img.onload = () => {
-                  setImageDimensions({
-                    width: img.naturalWidth,
-                    height: img.naturalHeight
-                  });
-                  setContent(e.target.result as string);
-                  setIsLoading(false);
-                };
-                img.onerror = (err) => {
-                  console.error('Image load error:', err);
-                  setError('Failed to load image');
-                  setIsLoading(false);
-                };
-                img.src = e.target.result as string;
-              }
-            };
-            reader.onerror = (err) => {
-              console.error('FileReader error:', err);
-              setError('Failed to read image file');
-              setIsLoading(false);
-            };
-            reader.readAsDataURL(file.data);
+            // Create a blob URL for the decompressed image data
+            const blobUrl = URL.createObjectURL(new Blob([decompressedBlob], { type: file.type }));
+            blobUrlRef.current = blobUrl;
+
+            // Create an image object to handle loading
+            const img = new Image();
+            
+            // Create a promise to handle image loading
+            const imageLoadPromise = new Promise<void>((resolve, reject) => {
+              img.onload = () => {
+                setImageDimensions({
+                  width: img.naturalWidth,
+                  height: img.naturalHeight
+                });
+                setContent(blobUrl);
+                setIsLoading(false);
+                resolve();
+              };
+              
+              img.onerror = () => {
+                reject(new Error('Failed to load image'));
+              };
+            });
+
+            // Set the source and wait for load/error
+            img.src = blobUrl;
+            await imageLoadPromise;
+
           } catch (err) {
             console.error('Image processing error:', err);
-            setError('Failed to process image');
-            setIsLoading(false);
+            throw new Error('Failed to process image');
           }
         } else {
           // Text file handling
-          const decompressedStream = new DecompressionStream('gzip');
-          const writer = decompressedStream.writable.getWriter();
-          writer.write(await file.data.arrayBuffer());
-          writer.close();
-          
-          const decompressedBlob = await new Response(decompressedStream.readable).blob();
           const text = await decompressedBlob.text();
           console.log(`File content length: ${text.length} characters`);
 
@@ -139,11 +158,12 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
         console.error('Error loading file:', err);
         setError(err instanceof Error ? err.message : 'Failed to load file content');
         setContent(null);
+        setIsLoading(false);
       }
     };
 
     loadContent();
-  }, [file]);
+  }, [file, cleanupBlobUrl]);
 
   if (!file) return null;
 
@@ -187,7 +207,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                             width: imageDimensions ? `${imageDimensions.width}px` : 'auto',
                             height: imageDimensions ? `${imageDimensions.height}px` : 'auto'
                           }}
-                          onError={() => setError('Failed to load image')}
                         />
                       </ErrorBoundary>
                     </div>
