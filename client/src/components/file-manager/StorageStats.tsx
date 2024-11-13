@@ -13,27 +13,26 @@ interface StorageStatsProps {
 }
 
 export function StorageStats({ total, compressed }: StorageStatsProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const savedPercentage = Math.round((1 - compressed / total) * 100) || 0;
   
   return (
     <Card className="backdrop-blur-lg bg-background/80">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-xl">Storage Usage</CardTitle>
-        <CollapsibleTrigger asChild>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="w-9 p-0"
-            onClick={() => setIsOpen(!isOpen)}
-          >
-            <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`} />
-            <span className="sr-only">Toggle stats</span>
-          </Button>
-        </CollapsibleTrigger>
-      </CardHeader>
-      <CardContent>
-        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Collapsible defaultOpen={false} onOpenChange={setIsOpen}>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-xl">Storage Usage</CardTitle>
+          <CollapsibleTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="w-9 p-0"
+            >
+              <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`} />
+              <span className="sr-only">Toggle stats</span>
+            </Button>
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CardContent>
           <div className="space-y-4">
             <div>
               <div className="flex justify-between mb-2">
@@ -42,8 +41,10 @@ export function StorageStats({ total, compressed }: StorageStatsProps) {
               </div>
               <Progress 
                 value={savedPercentage} 
-                className="h-2.5 bg-muted" 
-                indicatorClassName="bg-primary"
+                className="h-2.5 bg-muted dark:bg-muted-foreground/20"
+                style={{
+                  '--progress-background': 'hsl(var(--primary))',
+                } as React.CSSProperties}
               />
             </div>
             
@@ -69,8 +70,8 @@ export function StorageStats({ total, compressed }: StorageStatsProps) {
               </div>
             </CollapsibleContent>
           </div>
-        </Collapsible>
-      </CardContent>
+        </CardContent>
+      </Collapsible>
     </Card>
   );
 }
