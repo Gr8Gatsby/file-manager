@@ -1,6 +1,5 @@
 import * as React from "react"
 import * as RechartsPrimitive from "recharts"
-
 import { cn } from "@/lib/utils"
 
 // Format: { THEME_NAME: CSS_SELECTOR }
@@ -47,12 +46,23 @@ const ChartContainer = React.forwardRef<
   return (
     <ChartContext.Provider value={{ config }}>
       <div
-        data-chart={chartId}
         ref={ref}
         className={cn(
-          "flex aspect-video justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-none [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-sector]:outline-none [&_.recharts-surface]:outline-none",
+          "flex aspect-video justify-center text-xs",
+          "[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground",
+          "[&_.recharts-cartesian-grid_line]:stroke-border/50",
+          "[&_.recharts-curve.recharts-tooltip-cursor]:stroke-border",
+          "[&_.recharts-dot]:stroke-transparent",
+          "[&_.recharts-layer]:outline-none",
+          "[&_.recharts-polar-grid]:stroke-border",
+          "[&_.recharts-radial-bar-background-sector]:fill-muted",
+          "[&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted",
+          "[&_.recharts-reference-line]:stroke-border",
+          "[&_.recharts-sector]:stroke-transparent [&_.recharts-sector]:outline-none",
+          "[&_.recharts-surface]:outline-none",
           className
         )}
+        data-chart={chartId}
         {...props}
       >
         <ChartStyle id={chartId} config={config} />
@@ -68,34 +78,44 @@ ChartContainer.displayName = "Chart"
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(
     ([_, config]) => config.theme || config.color
-  )
+  );
 
-  if (!colorConfig.length) {
-    return null
-  }
+  React.useEffect(() => {
+    if (!colorConfig.length) return;
 
-  return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
-  })
-  .join("\n")}
-}
-`
-          )
-          .join("\n"),
-      }}
-    />
-  )
+    // Create style element with nonce from window.__CSP_NONCE__
+    const styleEl = document.createElement('style');
+    const nonce = (window as any).__CSP_NONCE__;
+    if (nonce) {
+      styleEl.setAttribute('nonce', nonce);
+    }
+
+    // Generate CSS variables for each theme and color
+    const cssRules = colorConfig.map(([key, itemConfig]) =>
+      Object.entries(THEMES)
+        .map(([theme, prefix]) => {
+          const color =
+            itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
+            itemConfig.color;
+          return color
+            ? `${prefix} [data-chart="${id}"] { --chart-color-${key}: ${color}; }`
+            : "";
+        })
+        .filter(Boolean)
+        .join("\n")
+    ).join("\n");
+
+    // Set the CSS content
+    styleEl.textContent = cssRules;
+    document.head.appendChild(styleEl);
+
+    // Cleanup on unmount
+    return () => {
+      document.head.removeChild(styleEl);
+    };
+  }, [id, colorConfig]);
+
+  return null;
 }
 
 const ChartTooltip = RechartsPrimitive.Tooltip
