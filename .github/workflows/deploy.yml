@@ -37,6 +37,7 @@ jobs:
         env:
           GITHUB_PAGES: true
           BASE_URL: '/file-manager'
+          PUBLIC_URL: '/file-manager'
           NODE_ENV: production
         
       - name: Setup Pages
