@@ -47,8 +47,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   }, []);
 
   useEffect(() => {
-    let blobUrl: string | null = null;
-
     const loadContent = async () => {
       if (!file) return;
 
@@ -58,31 +56,40 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       setImageDimensions(null);
 
       try {
-        console.log('Processing image file:', file.type, file.data.size);
+        console.log('Processing file:', file.type, file.data.size);
         
         if (file.type.startsWith('image/')) {
           try {
-            // Create blob URL immediately
-            blobUrl = URL.createObjectURL(new Blob([file.data], { type: file.type }));
-            console.log('Created blob URL:', blobUrl);
-            
-            const img = new Image();
-            img.onload = () => {
-              setImageDimensions({
-                width: img.naturalWidth,
-                height: img.naturalHeight
-              });
-              setContent(blobUrl);
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              if (e.target?.result) {
+                const img = new Image();
+                img.onload = () => {
+                  setImageDimensions({
+                    width: img.naturalWidth,
+                    height: img.naturalHeight
+                  });
+                  setContent(e.target.result as string);
+                  setIsLoading(false);
+                };
+                img.onerror = (err) => {
+                  console.error('Image load error:', err);
+                  setError('Failed to load image');
+                  setIsLoading(false);
+                };
+                img.src = e.target.result as string;
+              }
+            };
+            reader.onerror = (err) => {
+              console.error('FileReader error:', err);
+              setError('Failed to read image file');
               setIsLoading(false);
             };
-            img.onerror = (e) => {
-              console.error('Image load error:', e);
-              throw new Error('Failed to load image');
-            };
-            img.src = blobUrl;
+            reader.readAsDataURL(file.data);
           } catch (err) {
             console.error('Image processing error:', err);
-            throw err;
+            setError('Failed to process image');
+            setIsLoading(false);
           }
         } else {
           // Text file handling
@@ -112,6 +119,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                 );
                 console.log(`Parsed ${processedData.length} rows successfully`);
                 setContent(processedData);
+                setIsLoading(false);
               },
               header: true,
               skipEmptyLines: true,
@@ -123,6 +131,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             console.log('Processing JSON file');
             const parsed = JSON.parse(text);
             setContent(parsed);
+            setIsLoading(false);
             console.log('JSON parsed successfully');
           }
         }
@@ -130,22 +139,10 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
         console.error('Error loading file:', err);
         setError(err instanceof Error ? err.message : 'Failed to load file content');
         setContent(null);
-        if (blobUrl) {
-          URL.revokeObjectURL(blobUrl);
-          blobUrl = null;
-        }
-      } finally {
-        setIsLoading(false);
       }
     };
 
     loadContent();
-
-    return () => {
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-      }
-    };
   }, [file]);
 
   if (!file) return null;

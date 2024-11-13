@@ -25,7 +25,7 @@ export function StorageStats({ total, compressed }: StorageStatsProps) {
             </div>
             <Progress 
               value={savedPercentage} 
-              className="h-2 bg-muted-foreground/20 dark:bg-muted" 
+              className="h-2 bg-muted-foreground/30 dark:bg-muted border border-border" 
             />
           </div>
           
