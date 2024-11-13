@@ -73,10 +73,13 @@ export function FileManager() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 backdrop-blur-lg border-b">
+      <header className="sticky top-0 z-10 backdrop-blur-lg border-b bg-background/95">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-semibold">File Manager</h1>
-          <ThemeToggle />
+          <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
+            <span className="text-sm text-muted-foreground">Theme</span>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
