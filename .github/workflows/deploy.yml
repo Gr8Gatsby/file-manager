@@ -36,12 +36,16 @@ jobs:
         run: npm run build
         env:
           GITHUB_PAGES: true
+          BASE_URL: '/file-manager'
+          NODE_ENV: production
         
       - name: Setup Pages
         uses: actions/configure-pages@v4
         
-      - name: Copy CNAME file
-        run: cp client/public/CNAME dist/public/
+      - name: Copy CNAME and 404
+        run: |
+          cp client/public/CNAME dist/public/
+          cp client/public/404.html dist/public/
         
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
