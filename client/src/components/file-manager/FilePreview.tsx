@@ -64,24 +64,27 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       try {
         // Get array buffer from blob
         const arrayBuffer = await file.data.arrayBuffer();
-        // Create decompression stream
-        const decompressedStream = new DecompressionStream('gzip');
-        const writer = decompressedStream.writable.getWriter();
-        await writer.write(arrayBuffer);
-        await writer.close();
+        let fileBlob = file.data;
 
-        // Get decompressed blob
-        const decompressedBlob = await new Response(decompressedStream.readable).blob();
-        decompressedBlob.type = file.type; // Preserve original file type
+        // Only decompress if the file is actually compressed
+        if (file.data.type.includes('gzip') || file.name.endsWith('.gz')) {
+          const decompressedStream = new DecompressionStream('gzip');
+          const writer = decompressedStream.writable.getWriter();
+          await writer.write(arrayBuffer);
+          await writer.close();
+          fileBlob = await new Response(decompressedStream.readable).blob();
+        }
+
+        // Set the correct type
+        fileBlob = new Blob([fileBlob], { type: file.type });
 
         // Handle different file types
         if (file.type.startsWith('image/')) {
-          // Handle images
-          const blobUrl = URL.createObjectURL(decompressedBlob);
+          const blobUrl = URL.createObjectURL(fileBlob);
           blobUrlRef.current = blobUrl;
           
+          const img = new Image();
           await new Promise<void>((resolve, reject) => {
-            const img = new Image();
             img.onload = () => {
               setImageDimensions({
                 width: img.naturalWidth,
@@ -95,23 +98,12 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             img.src = blobUrl;
           });
         } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
-          // Handle CSV/TSV files with streaming
-          const rows: any[] = [];
-          Papa.parse(decompressedBlob, {
+          const text = await fileBlob.text();
+          Papa.parse(text, {
             header: true,
             dynamicTyping: true,
-            chunk: (results) => {
-              const newRows = [...rows, ...results.data].slice(-1000); // Keep only latest 1000 rows
-              rows.length = 0;
-              rows.push(...newRows);
-              setContent(newRows);
-            },
-            step: (results) => {
-              const progress = Math.min(100, Math.round((results.meta.cursor / decompressedBlob.size) * 100));
-              setProgress(progress);
-            },
-            complete: () => {
-              setProgress(100);
+            complete: (results) => {
+              setContent(results.data.slice(-1000)); // Keep only latest 1000 rows
               setIsLoading(false);
             },
             error: (error) => {
@@ -120,7 +112,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           });
         } else {
           // Handle other text files
-          const text = await decompressedBlob.text();
+          const text = await fileBlob.text();
           setContent(text);
           setIsLoading(false);
         }
@@ -155,14 +147,21 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             
             <ScrollArea className="flex-1 p-3">
               <ErrorBoundary onError={(error) => setError(error.message)}>
-                {error ? (
-                  <Alert variant="destructive">
+                {error && (
+                  <Alert variant="destructive" className="mx-auto max-w-md">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
-                ) : isLoading ? (
+                )}
+                
+                {isLoading ? (
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="h-8 w-8 animate-spin" />
+                    <div className="text-sm text-muted-foreground">
+                      Loading {file.type.startsWith('image/') ? 'image' : 
+                              file.type === 'text/csv' || file.type === 'text/tab-separated-values' ? 'spreadsheet' :
+                              'file'}...
+                    </div>
                     {progress > 0 && (
                       <div className="w-full max-w-xs">
                         <div className="h-2 bg-secondary rounded-full overflow-hidden">
