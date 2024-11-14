@@ -4,6 +4,7 @@ import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { VirtualizedList } from '@/components/ui/virtualized-list';
 import Papa from 'papaparse';
 
 interface FilePreviewProps {
@@ -34,10 +35,50 @@ function ErrorBoundary({ children, onError }: ErrorBoundaryProps) {
   return <>{children}</>;
 }
 
+async function streamFileContent(blob: Blob, onProgress: (progress: number) => void, onData: (data: any[]) => void) {
+  const decompressedStream = new DecompressionStream('gzip');
+  const reader = blob.stream().pipeThrough(decompressedStream).getReader();
+  
+  let buffer = '';
+  let processedRows: any[] = [];
+  let totalBytes = 0;
+  const fileSize = blob.size;
+
+  const parser = Papa.parse('', {
+    header: true,
+    dynamicTyping: true,
+    chunk: (results) => {
+      processedRows = [...processedRows, ...results.data];
+      onData(processedRows);
+    }
+  });
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      totalBytes += value.length;
+      const progress = Math.round((totalBytes / fileSize) * 100);
+      onProgress(progress);
+      
+      const text = new TextDecoder().decode(value);
+      buffer += text;
+      
+      parser.write(buffer);
+      buffer = '';
+    }
+    parser.finish();
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export function FilePreview({ file, onClose }: FilePreviewProps) {
   const [content, setContent] = useState<string | Array<any> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const blobUrlRef = useRef<string | null>(null);
 
@@ -47,7 +88,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
     setIsLoading(false);
   }, []);
 
-  // Cleanup function for blob URLs
   const cleanupBlobUrl = useCallback(() => {
     if (blobUrlRef.current) {
       URL.revokeObjectURL(blobUrlRef.current);
@@ -68,30 +108,26 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       setIsLoading(true);
       setError(null);
       setContent(null);
+      setProgress(0);
       setImageDimensions(null);
       cleanupBlobUrl();
 
       try {
         console.log('Processing file:', file.type, file.data.size);
         
-        // Decompress the file data regardless of type
-        const decompressedStream = new DecompressionStream('gzip');
-        const writer = decompressedStream.writable.getWriter();
-        writer.write(await file.data.arrayBuffer());
-        writer.close();
-        
-        const decompressedBlob = await new Response(decompressedStream.readable).blob();
-        
         if (file.type.startsWith('image/')) {
           try {
-            // Create a blob URL for the decompressed image data
+            const decompressedStream = new DecompressionStream('gzip');
+            const writer = decompressedStream.writable.getWriter();
+            writer.write(await file.data.arrayBuffer());
+            writer.close();
+            
+            const decompressedBlob = await new Response(decompressedStream.readable).blob();
             const blobUrl = URL.createObjectURL(new Blob([decompressedBlob], { type: file.type }));
             blobUrlRef.current = blobUrl;
 
-            // Create an image object to handle loading
             const img = new Image();
             
-            // Create a promise to handle image loading
             const imageLoadPromise = new Promise<void>((resolve, reject) => {
               img.onload = () => {
                 setImageDimensions({
@@ -108,7 +144,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               };
             });
 
-            // Set the source and wait for load/error
             img.src = blobUrl;
             await imageLoadPromise;
 
@@ -116,43 +151,24 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             console.error('Image processing error:', err);
             throw new Error('Failed to process image');
           }
-        } else {
-          // Text file handling
+        } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
+          await streamFileContent(
+            file.data,
+            (progress) => setProgress(progress),
+            (data) => setContent(data)
+          );
+          setIsLoading(false);
+        } else if (file.type === 'application/json') {
+          const decompressedStream = new DecompressionStream('gzip');
+          const writer = decompressedStream.writable.getWriter();
+          writer.write(await file.data.arrayBuffer());
+          writer.close();
+          
+          const decompressedBlob = await new Response(decompressedStream.readable).blob();
           const text = await decompressedBlob.text();
-          console.log(`File content length: ${text.length} characters`);
-
-          if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
-            console.log('Processing CSV/TSV file');
-            Papa.parse(text, {
-              complete: (results) => {
-                if (results.errors.length > 0) {
-                  throw new Error(`Parse error: ${results.errors[0].message}`);
-                }
-                const processedData = results.data.map(row => 
-                  Object.fromEntries(
-                    Object.entries(row as Record<string, unknown>).map(([key, value]) => [
-                      key,
-                      value === null || value === undefined ? '' : value
-                    ])
-                  )
-                );
-                console.log(`Parsed ${processedData.length} rows successfully`);
-                setContent(processedData);
-                setIsLoading(false);
-              },
-              header: true,
-              skipEmptyLines: true,
-              error: (error: Error) => {
-                throw new Error(`Parse error: ${error.message}`);
-              }
-            });
-          } else if (file.type === 'application/json') {
-            console.log('Processing JSON file');
-            const parsed = JSON.parse(text);
-            setContent(parsed);
-            setIsLoading(false);
-            console.log('JSON parsed successfully');
-          }
+          const parsed = JSON.parse(text);
+          setContent(parsed);
+          setIsLoading(false);
         }
       } catch (err) {
         console.error('Error loading file:', err);
@@ -191,8 +207,19 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               ) : isLoading ? (
-                <div className="flex items-center justify-center h-full">
+                <div className="flex flex-col items-center justify-center h-full gap-2">
                   <Loader2 className="h-8 w-8 animate-spin" />
+                  {progress > 0 && (
+                    <div className="w-full max-w-xs">
+                      <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-primary transition-all duration-200"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-center mt-1">{Math.round(progress)}% loaded</p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
@@ -213,31 +240,23 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                   )}
                   
                   {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && content.length > 0 && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr>
-                            {Object.keys(content[0] || {}).map((header) => (
-                              <th key={header} className="border p-2 text-left bg-muted">
-                                {header}
-                              </th>
+                    <div className="h-[calc(100vh-12rem)]">
+                      <VirtualizedList
+                        data={content}
+                        rowHeight={40}
+                        overscan={5}
+                        renderRow={({ index, style }) => (
+                          <div key={index} style={style} className="flex gap-2 py-1 border-b">
+                            {Object.values(content[index]).map((cell, i) => (
+                              <div key={i} className="flex-1 truncate">
+                                {typeof cell === 'object' && cell !== null
+                                  ? JSON.stringify(cell)
+                                  : String(cell)}
+                              </div>
                             ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {content.map((row, i) => (
-                            <tr key={i} className="even:bg-muted/50">
-                              {Object.values(row).map((cell, j) => (
-                                <td key={j} className="border p-2">
-                                  {typeof cell === 'object' && cell !== null 
-                                    ? JSON.stringify(cell)
-                                    : String(cell)}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </div>
+                        )}
+                      />
                     </div>
                   )}
                   
