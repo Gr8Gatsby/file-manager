@@ -5,15 +5,9 @@
     <title>File Manager</title>
     <script>
       // Single Page Apps for GitHub Pages
-      // Handles routing by redirecting to index.html with the correct path
-      (function() {
-        const path = window.location.pathname + window.location.search;
-        localStorage.setItem('spa-path', path);
-        window.location.href = '/file-manager/'; // Redirect to the correct base path
-      })();
+      sessionStorage.redirect = location.href;
+      location.replace('/file-manager/');
     </script>
   </head>
-  <body>
-    Redirecting...
-  </body>
+  <body></body>
 </html>
