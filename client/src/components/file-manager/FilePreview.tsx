@@ -50,6 +50,50 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
     };
   }, [cleanupBlobUrl]);
 
+  async function streamFileContent(blob: Blob, type: string) {
+    const reader = blob.stream().getReader();
+    let buffer = '';
+    let processedRows: any[] = [];
+    let bytesRead = 0;
+    const totalBytes = blob.size;
+    
+    const parser = Papa.parse('', {
+      header: true,
+      dynamicTyping: true,
+      chunk: (results) => {
+        processedRows = [...processedRows.slice(-999), ...results.data];
+        setContent(processedRows);
+      }
+    });
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        bytesRead += value.length;
+        setProgress(Math.round((bytesRead / totalBytes) * 100));
+        
+        const text = new TextDecoder().decode(value);
+        buffer += text;
+        
+        // For CSV/TSV, parse in chunks
+        if (type === 'text/csv' || type === 'text/tab-separated-values') {
+          parser.write(buffer);
+          buffer = '';
+        }
+      }
+
+      if (type === 'text/csv' || type === 'text/tab-separated-values') {
+        parser.finish();
+      }
+      
+      return buffer;
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
   useEffect(() => {
     const loadContent = async () => {
       if (!file) return;
@@ -108,36 +152,40 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           });
         } 
         else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
-          const text = await fileBlob.text();
-          Papa.parse(text, {
-            header: true,
-            dynamicTyping: true,
-            preview: 1000, // Limit to 1000 rows for performance
-            complete: (results) => {
-              if (results.errors.length > 0) {
-                throw new Error(`CSV parsing error: ${results.errors[0].message}`);
-              }
-              setContent(results.data);
-              setIsLoading(false);
-            },
-            error: (error: Error) => {
-              throw new Error(`CSV parsing error: ${error.message}`);
-            }
-          });
+          await streamFileContent(fileBlob, file.type);
+          setIsLoading(false);
         }
         else if (file.type === 'application/json') {
           const text = await fileBlob.text();
           try {
-            const json = JSON.parse(text);
+            // First verify we have valid text content
+            if (!text.trim()) {
+              throw new Error('Empty JSON file');
+            }
+            
+            // Try to parse JSON with better error handling
+            let json;
+            try {
+              json = JSON.parse(text);
+            } catch (parseError) {
+              console.error('JSON Parse Error:', parseError);
+              throw new Error('Invalid JSON format: ' + parseError.message);
+            }
+            
+            // Validate we got an actual object or array
+            if (typeof json !== 'object' || json === null) {
+              throw new Error('Invalid JSON content: expected object or array');
+            }
+            
             setContent(json);
+            setIsLoading(false);
           } catch (error) {
-            throw new Error('Invalid JSON format');
+            console.error('JSON Processing Error:', error);
+            throw new Error(`JSON Error: ${error.message}`);
           }
-          setIsLoading(false);
         }
         else {
-          // For other text files, just show as plain text
-          const text = await fileBlob.text();
+          const text = await streamFileContent(fileBlob, file.type);
           setContent(text);
           setIsLoading(false);
         }
