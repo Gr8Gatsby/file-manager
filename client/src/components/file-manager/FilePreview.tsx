@@ -35,7 +35,7 @@ function ErrorBoundary({ children, onError }: ErrorBoundaryProps) {
   return <>{children}</>;
 }
 
-async function streamFileContent(blob: Blob, onProgress: (progress: number) => void, onData: (data: any[]) => void) {
+async function streamFileContent(blob: Blob, onProgress: (progress: number) => void, onData: (data: any[]) => void, fileType: string) {
   const decompressedStream = new DecompressionStream('gzip');
   const reader = blob.stream().pipeThrough(decompressedStream).getReader();
   
@@ -43,15 +43,23 @@ async function streamFileContent(blob: Blob, onProgress: (progress: number) => v
   let processedRows: any[] = [];
   let totalBytes = 0;
   const fileSize = blob.size;
-
-  const parser = Papa.parse('', {
-    header: true,
-    dynamicTyping: true,
-    chunk: (results) => {
-      processedRows = [...processedRows, ...results.data];
-      onData(processedRows);
-    }
-  });
+  
+  // Create parser instance before the streaming loop
+  let parser = null;
+  
+  if (fileType === 'text/csv' || fileType === 'text/tab-separated-values') {
+    parser = Papa.parse('', {
+      header: true,
+      dynamicTyping: true,
+      chunk: (results: any) => {
+        if (results.errors.length > 0) {
+          console.warn('Parse warnings:', results.errors);
+        }
+        processedRows = [...processedRows, ...results.data];
+        onData(processedRows);
+      }
+    });
+  }
 
   try {
     while (true) {
@@ -59,16 +67,28 @@ async function streamFileContent(blob: Blob, onProgress: (progress: number) => v
       if (done) break;
       
       totalBytes += value.length;
-      const progress = Math.round((totalBytes / fileSize) * 100);
-      onProgress(progress);
+      onProgress(Math.round((totalBytes / fileSize) * 100));
       
       const text = new TextDecoder().decode(value);
       buffer += text;
       
-      parser.write(buffer);
-      buffer = '';
+      // Only attempt to parse if parser is initialized
+      if (parser) {
+        parser.write(buffer);
+        buffer = '';
+      }
     }
-    parser.finish();
+    
+    // Finish parsing any remaining data
+    if (parser) {
+      if (buffer.length > 0) {
+        parser.write(buffer);
+      }
+      parser.finish();
+    } else {
+      // For non-CSV files, process the complete buffer
+      onData([buffer]);
+    }
   } finally {
     reader.releaseLock();
   }
@@ -155,7 +175,8 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           await streamFileContent(
             file.data,
             (progress) => setProgress(progress),
-            (data) => setContent(data)
+            (data) => setContent(data),
+            file.type
           );
           setIsLoading(false);
         } else if (file.type === 'application/json') {
@@ -166,8 +187,12 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           
           const decompressedBlob = await new Response(decompressedStream.readable).blob();
           const text = await decompressedBlob.text();
-          const parsed = JSON.parse(text);
-          setContent(parsed);
+          try {
+            const parsed = JSON.parse(text);
+            setContent(parsed);
+          } catch (err) {
+            throw new Error('Invalid JSON format');
+          }
           setIsLoading(false);
         }
       } catch (err) {
