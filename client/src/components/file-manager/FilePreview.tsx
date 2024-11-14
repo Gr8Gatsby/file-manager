@@ -50,37 +50,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
     };
   }, [cleanupBlobUrl]);
 
-  async function streamFileContent(blob: Blob, onProgress: (progress: number) => void) {
-    const MAX_ROWS = 1000; // Maximum rows to display
-    
-    return new Promise((resolve, reject) => {
-      let processedRows: any[] = [];
-      
-      Papa.parse(blob, {
-        header: true,
-        dynamicTyping: true,
-        skipEmptyLines: true,
-        chunk: (results) => {
-          // Keep only the latest MAX_ROWS
-          processedRows = [...processedRows, ...results.data].slice(-MAX_ROWS);
-          setContent(processedRows);
-        },
-        step: (results, parser) => {
-          // Update progress based on bytes processed
-          const progress = Math.min(100, Math.round((results.meta.cursor / blob.size) * 100));
-          onProgress(progress);
-        },
-        complete: () => {
-          onProgress(100);
-          resolve(processedRows);
-        },
-        error: (error) => {
-          reject(new Error(`CSV parsing error: ${error.message}`));
-        }
-      });
-    });
-  }
-
   useEffect(() => {
     const loadContent = async () => {
       if (!file) return;
@@ -94,8 +63,8 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
 
       try {
         let fileBlob = file.data;
+        const MAX_ROWS = 1000;
         
-        // Only decompress if needed
         if (file.name.endsWith('.gz')) {
           try {
             const decompressedStream = new DecompressionStream('gzip');
@@ -115,8 +84,32 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           }
         }
 
-        // Handle different file types
-        if (file.type.startsWith('image/')) {
+        if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
+          // Use Papa Parse's built-in streaming for CSV files
+          Papa.parse(fileBlob, {
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
+            chunk: (results) => {
+              setContent(prevContent => {
+                const newContent = prevContent ? [...prevContent, ...results.data] : results.data;
+                return newContent.slice(-MAX_ROWS); // Keep only latest 1000 rows
+              });
+            },
+            step: (results) => {
+              // Update progress based on bytes processed
+              const progress = Math.min(100, Math.round((results.meta.cursor / fileBlob.size) * 100));
+              setProgress(progress);
+            },
+            complete: () => {
+              setProgress(100);
+              setIsLoading(false);
+            },
+            error: (error) => {
+              throw new Error(`CSV parsing error: ${error.message}`);
+            }
+          });
+        } else if (file.type.startsWith('image/')) {
           const blobUrl = URL.createObjectURL(fileBlob);
           blobUrlRef.current = blobUrl;
           
@@ -136,12 +129,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             };
             img.src = blobUrl;
           });
-        } 
-        else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
-          await streamFileContent(fileBlob, setProgress);
-          setIsLoading(false);
-        }
-        else if (file.type === 'application/json') {
+        } else if (file.type === 'application/json') {
           const text = await fileBlob.text();
           try {
             // First verify we have valid text content
@@ -153,9 +141,9 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             let json;
             try {
               json = JSON.parse(text);
-            } catch (parseError) {
+            } catch (parseError: unknown) {
               console.error('JSON Parse Error:', parseError);
-              throw new Error('Invalid JSON format: ' + parseError.message);
+              throw new Error(`Invalid JSON format: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
             }
             
             // Validate we got an actual object or array
@@ -165,12 +153,11 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             
             setContent(json);
             setIsLoading(false);
-          } catch (error) {
+          } catch (error: unknown) {
             console.error('JSON Processing Error:', error);
-            throw new Error(`JSON Error: ${error.message}`);
+            throw new Error(`JSON Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
-        }
-        else {
+        } else {
           const text = await fileBlob.text();
           setContent(text);
           setIsLoading(false);
@@ -258,7 +245,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                       </div>
                     )}
                     
-                    {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && (
+                    {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && content.length > 0 && (
                       <div className="h-[calc(100vh-12rem)]">
                         <VirtualizedList
                           data={content}
