@@ -17,58 +17,6 @@ interface FilePreviewProps {
   onClose: () => void;
 }
 
-async function streamFileContent(
-  blob: Blob, 
-  fileType: string,
-  onProgress: (progress: number) => void,
-  onData: (data: any[]) => void
-) {
-  if (fileType === 'text/csv' || fileType === 'text/tab-separated-values') {
-    // Stream and parse CSV/TSV
-    Papa.parse(blob, {
-      header: true,
-      dynamicTyping: true,
-      chunk: (results) => {
-        onData(results.data);
-      },
-      step: (results) => {
-        const progress = Math.min(100, Math.round((results.meta.cursor / blob.size) * 100));
-        onProgress(progress);
-      },
-      complete: () => {
-        onProgress(100);
-      },
-      error: (error) => {
-        console.error('CSV parsing error:', error);
-        throw error;
-      }
-    });
-  } else {
-    // For non-CSV files, decompress and read
-    const decompressedStream = new DecompressionStream('gzip');
-    const reader = blob.stream().pipeThrough(decompressedStream).getReader();
-    const chunks: Uint8Array[] = [];
-    let loadedBytes = 0;
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        chunks.push(value);
-        loadedBytes += value.length;
-        onProgress(Math.round((loadedBytes / blob.size) * 100));
-      }
-      
-      const allChunks = new Blob(chunks);
-      const content = await allChunks.text();
-      onData([content]);
-    } finally {
-      reader.releaseLock();
-    }
-  }
-}
-
 function ErrorBoundary({ children, onError }: { children: React.ReactNode; onError: (error: Error) => void }) {
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
@@ -114,14 +62,21 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       cleanupBlobUrl();
 
       try {
+        // Get array buffer from blob
+        const arrayBuffer = await file.data.arrayBuffer();
+        // Create decompression stream
         const decompressedStream = new DecompressionStream('gzip');
         const writer = decompressedStream.writable.getWriter();
-        await writer.write(await file.data.arrayBuffer());
+        await writer.write(arrayBuffer);
         await writer.close();
-        
-        const decompressedBlob = await new Response(decompressedStream.readable).blob();
 
+        // Get decompressed blob
+        const decompressedBlob = await new Response(decompressedStream.readable).blob();
+        decompressedBlob.type = file.type; // Preserve original file type
+
+        // Handle different file types
         if (file.type.startsWith('image/')) {
+          // Handle images
           const blobUrl = URL.createObjectURL(decompressedBlob);
           blobUrlRef.current = blobUrl;
           
@@ -139,16 +94,35 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             img.onerror = () => reject(new Error('Failed to load image'));
             img.src = blobUrl;
           });
-        } else {
-          await streamFileContent(
-            decompressedBlob,
-            file.type,
-            setProgress,
-            (data) => {
-              setContent(data);
+        } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
+          // Handle CSV/TSV files with streaming
+          const rows: any[] = [];
+          Papa.parse(decompressedBlob, {
+            header: true,
+            dynamicTyping: true,
+            chunk: (results) => {
+              const newRows = [...rows, ...results.data].slice(-1000); // Keep only latest 1000 rows
+              rows.length = 0;
+              rows.push(...newRows);
+              setContent(newRows);
+            },
+            step: (results) => {
+              const progress = Math.min(100, Math.round((results.meta.cursor / decompressedBlob.size) * 100));
+              setProgress(progress);
+            },
+            complete: () => {
+              setProgress(100);
               setIsLoading(false);
+            },
+            error: (error) => {
+              throw new Error(`CSV parsing error: ${error.message}`);
             }
-          );
+          });
+        } else {
+          // Handle other text files
+          const text = await decompressedBlob.text();
+          setContent(text);
+          setIsLoading(false);
         }
       } catch (err) {
         console.error('Error loading file:', err);
@@ -180,71 +154,77 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             </div>
             
             <ScrollArea className="flex-1 p-3">
-              {error ? (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              ) : isLoading ? (
-                <div className="flex flex-col items-center gap-2">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                  {progress > 0 && (
-                    <div className="w-full max-w-xs">
-                      <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-primary transition-all duration-200"
-                          style={{ width: `${progress}%` }}
-                        />
+              <ErrorBoundary onError={(error) => setError(error.message)}>
+                {error ? (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                ) : isLoading ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    {progress > 0 && (
+                      <div className="w-full max-w-xs">
+                        <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-primary transition-all duration-200"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-center mt-1">
+                          {Math.round(progress)}% loaded
+                          {file.type === 'text/csv' || file.type === 'text/tab-separated-values' 
+                            ? ' (showing latest 1000 rows)' 
+                            : ''
+                          }
+                        </p>
                       </div>
-                      <p className="text-xs text-center mt-1">{Math.round(progress)}% loaded</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {file.type.startsWith('image/') && typeof content === 'string' && (
-                    <div className="relative flex justify-center">
-                      <ErrorBoundary onError={(error) => setError(error.message)}>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {file.type.startsWith('image/') && typeof content === 'string' && (
+                      <div className="relative flex justify-center">
                         <img
                           src={content}
                           alt={file.name}
-                          className="max-w-full max-h-[80vh] object-contain"
+                          className="max-w-full max-h-[80vh] object-contain rounded-lg"
                           style={{
                             width: imageDimensions?.width ? `${imageDimensions.width}px` : 'auto',
                             height: imageDimensions?.height ? `${imageDimensions.height}px` : 'auto'
                           }}
                         />
-                      </ErrorBoundary>
-                    </div>
-                  )}
-                  
-                  {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && (
-                    <div className="h-[calc(100vh-12rem)]">
-                      <VirtualizedList
-                        data={content}
-                        rowHeight={40}
-                        overscan={5}
-                        renderRow={({ index, style }) => (
-                          <div style={style} className="flex gap-2 py-1 border-b">
-                            {Object.entries(content[index]).map(([key, value], i) => (
-                              <div key={i} className="flex-1 min-w-[100px] max-w-[200px] truncate">
-                                <span className="text-muted-foreground">{key}: </span>
-                                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      />
-                    </div>
-                  )}
-                  
-                  {file.type === 'application/json' && content && (
-                    <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg">
-                      {JSON.stringify(content, null, 2)}
-                    </pre>
-                  )}
-                </>
-              )}
+                      </div>
+                    )}
+                    
+                    {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && (
+                      <div className="h-[calc(100vh-12rem)]">
+                        <VirtualizedList
+                          data={content}
+                          rowHeight={40}
+                          overscan={5}
+                          renderRow={({ index, style }) => (
+                            <div key={`row-${index}`} style={style} className="flex gap-2 py-1 border-b">
+                              {Object.entries(content[index]).map(([key, value], i) => (
+                                <div key={`${index}-${key}-${i}`} className="flex-1 min-w-[100px] max-w-[200px] truncate">
+                                  <span className="text-muted-foreground">{key}: </span>
+                                  {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        />
+                      </div>
+                    )}
+                    
+                    {file.type === 'application/json' && typeof content === 'string' && (
+                      <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg">
+                        {JSON.stringify(JSON.parse(content), null, 2)}
+                      </pre>
+                    )}
+                  </>
+                )}
+              </ErrorBoundary>
             </ScrollArea>
           </div>
         </div>
