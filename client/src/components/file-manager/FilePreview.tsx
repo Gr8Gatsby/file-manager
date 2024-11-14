@@ -17,15 +17,61 @@ interface FilePreviewProps {
   onClose: () => void;
 }
 
-interface ErrorBoundaryProps {
-  children: React.ReactNode;
-  onError: (error: Error) => void;
+async function streamFileContent(
+  blob: Blob, 
+  fileType: string,
+  onProgress: (progress: number) => void,
+  onData: (data: any[]) => void
+) {
+  if (fileType === 'text/csv' || fileType === 'text/tab-separated-values') {
+    // Stream and parse CSV/TSV
+    Papa.parse(blob, {
+      header: true,
+      dynamicTyping: true,
+      chunk: (results) => {
+        onData(results.data);
+      },
+      step: (results) => {
+        const progress = Math.min(100, Math.round((results.meta.cursor / blob.size) * 100));
+        onProgress(progress);
+      },
+      complete: () => {
+        onProgress(100);
+      },
+      error: (error) => {
+        console.error('CSV parsing error:', error);
+        throw error;
+      }
+    });
+  } else {
+    // For non-CSV files, decompress and read
+    const decompressedStream = new DecompressionStream('gzip');
+    const reader = blob.stream().pipeThrough(decompressedStream).getReader();
+    const chunks: Uint8Array[] = [];
+    let loadedBytes = 0;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        chunks.push(value);
+        loadedBytes += value.length;
+        onProgress(Math.round((loadedBytes / blob.size) * 100));
+      }
+      
+      const allChunks = new Blob(chunks);
+      const content = await allChunks.text();
+      onData([content]);
+    } finally {
+      reader.releaseLock();
+    }
+  }
 }
 
-function ErrorBoundary({ children, onError }: ErrorBoundaryProps) {
+function ErrorBoundary({ children, onError }: { children: React.ReactNode; onError: (error: Error) => void }) {
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
-      console.error('Error caught by boundary:', event.error);
       onError(event.error);
     };
     window.addEventListener('error', handleError);
@@ -35,82 +81,13 @@ function ErrorBoundary({ children, onError }: ErrorBoundaryProps) {
   return <>{children}</>;
 }
 
-async function streamFileContent(blob: Blob, onProgress: (progress: number) => void, onData: (data: any[]) => void) {
-  const CHUNK_SIZE = 64 * 1024; // 64KB chunks
-  const MAX_ROWS_PER_CHUNK = 1000; // Limit rows per update
-  const MAX_COLUMNS = 10; // Maximum number of columns to display
-  
-  const decompressedStream = new DecompressionStream('gzip');
-  const reader = blob.stream().pipeThrough(decompressedStream).getReader();
-  
-  let buffer = '';
-  let processedRows: any[] = [];
-  let totalBytes = 0;
-  const fileSize = blob.size;
-
-  // Create CSV parser with chunk processing
-  const parser = new Papa.Parser('', {
-    header: true,
-    dynamicTyping: true,
-    chunk: (results: any) => {
-      if (results.errors.length > 0) {
-        console.warn('Parse warnings:', results.errors);
-      }
-
-      // Process the data to limit columns
-      const limitedData = results.data.map((row: any) => {
-        const entries = Object.entries(row).slice(0, MAX_COLUMNS);
-        return Object.fromEntries(entries);
-      });
-
-      // Only keep the latest chunk of rows to prevent memory issues
-      processedRows = processedRows.slice(-MAX_ROWS_PER_CHUNK).concat(limitedData);
-      onData(processedRows);
-    },
-    error: (error: any) => {
-      console.error('CSV parsing error:', error);
-    }
-  });
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      totalBytes += value.length;
-      onProgress(Math.round((totalBytes / fileSize) * 100));
-      
-      const text = new TextDecoder().decode(value);
-      buffer += text;
-      
-      // Parse the buffer
-      parser.parse(buffer);
-      buffer = '';
-    }
-    
-    // Parse any remaining data
-    if (buffer.length > 0) {
-      parser.parse(buffer);
-    }
-    parser.finish();
-  } finally {
-    reader.releaseLock();
-  }
-}
-
 export function FilePreview({ file, onClose }: FilePreviewProps) {
-  const [content, setContent] = useState<string | Array<any> | null>(null);
+  const [content, setContent] = useState<any[] | string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const blobUrlRef = useRef<string | null>(null);
-
-  const handleImageError = useCallback((error: Error) => {
-    console.error('Image loading error:', error);
-    setError(`Failed to load image: ${error.message}`);
-    setIsLoading(false);
-  }, []);
 
   const cleanupBlobUrl = useCallback(() => {
     if (blobUrlRef.current) {
@@ -137,19 +114,19 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       cleanupBlobUrl();
 
       try {
-        if (file.type.startsWith('image/')) {
-          const decompressedStream = new DecompressionStream('gzip');
-          const writer = decompressedStream.writable.getWriter();
-          writer.write(await file.data.arrayBuffer());
-          writer.close();
-          
-          const decompressedBlob = await new Response(decompressedStream.readable).blob();
-          const blobUrl = URL.createObjectURL(new Blob([decompressedBlob], { type: file.type }));
-          blobUrlRef.current = blobUrl;
+        const decompressedStream = new DecompressionStream('gzip');
+        const writer = decompressedStream.writable.getWriter();
+        await writer.write(await file.data.arrayBuffer());
+        await writer.close();
+        
+        const decompressedBlob = await new Response(decompressedStream.readable).blob();
 
-          const img = new Image();
+        if (file.type.startsWith('image/')) {
+          const blobUrl = URL.createObjectURL(decompressedBlob);
+          blobUrlRef.current = blobUrl;
           
-          const imageLoadPromise = new Promise<void>((resolve, reject) => {
+          await new Promise<void>((resolve, reject) => {
+            const img = new Image();
             img.onload = () => {
               setImageDimensions({
                 width: img.naturalWidth,
@@ -160,37 +137,22 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               resolve();
             };
             img.onerror = () => reject(new Error('Failed to load image'));
+            img.src = blobUrl;
           });
-
-          img.src = blobUrl;
-          await imageLoadPromise;
-        } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
+        } else {
           await streamFileContent(
-            file.data,
-            (progress) => setProgress(progress),
-            (data) => setContent(data)
+            decompressedBlob,
+            file.type,
+            setProgress,
+            (data) => {
+              setContent(data);
+              setIsLoading(false);
+            }
           );
-          setIsLoading(false);
-        } else if (file.type === 'application/json') {
-          const decompressedStream = new DecompressionStream('gzip');
-          const writer = decompressedStream.writable.getWriter();
-          writer.write(await file.data.arrayBuffer());
-          writer.close();
-          
-          const decompressedBlob = await new Response(decompressedStream.readable).blob();
-          const text = await decompressedBlob.text();
-          try {
-            const parsed = JSON.parse(text);
-            setContent(parsed);
-          } catch (err) {
-            throw new Error('Invalid JSON format');
-          }
-          setIsLoading(false);
         }
       } catch (err) {
         console.error('Error loading file:', err);
         setError(err instanceof Error ? err.message : 'Failed to load file content');
-        setContent(null);
         setIsLoading(false);
       }
     };
@@ -226,9 +188,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               ) : isLoading ? (
                 <div className="flex flex-col items-center gap-2">
                   <Loader2 className="h-8 w-8 animate-spin" />
-                  <div className="text-sm text-muted-foreground">
-                    Processing large file, showing latest {Math.min(Array.isArray(content) ? content.length : 0, 1000)} rows...
-                  </div>
                   {progress > 0 && (
                     <div className="w-full max-w-xs">
                       <div className="h-2 bg-secondary rounded-full overflow-hidden">
@@ -243,16 +202,16 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                 </div>
               ) : (
                 <>
-                  {file.type.startsWith('image/') && (
+                  {file.type.startsWith('image/') && typeof content === 'string' && (
                     <div className="relative flex justify-center">
-                      <ErrorBoundary onError={handleImageError}>
+                      <ErrorBoundary onError={(error) => setError(error.message)}>
                         <img
-                          src={content as string}
+                          src={content}
                           alt={file.name}
                           className="max-w-full max-h-[80vh] object-contain"
                           style={{
-                            width: imageDimensions ? `${imageDimensions.width}px` : 'auto',
-                            height: imageDimensions ? `${imageDimensions.height}px` : 'auto'
+                            width: imageDimensions?.width ? `${imageDimensions.width}px` : 'auto',
+                            height: imageDimensions?.height ? `${imageDimensions.height}px` : 'auto'
                           }}
                         />
                       </ErrorBoundary>
@@ -262,12 +221,12 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                   {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && (
                     <div className="h-[calc(100vh-12rem)]">
                       <VirtualizedList
-                        data={content.slice(-1000)}
+                        data={content}
                         rowHeight={40}
                         overscan={5}
                         renderRow={({ index, style }) => (
                           <div style={style} className="flex gap-2 py-1 border-b">
-                            {Object.entries(content[index]).slice(0, 10).map(([key, value], i) => (
+                            {Object.entries(content[index]).map(([key, value], i) => (
                               <div key={i} className="flex-1 min-w-[100px] max-w-[200px] truncate">
                                 <span className="text-muted-foreground">{key}: </span>
                                 {typeof value === 'object' ? JSON.stringify(value) : String(value)}
@@ -279,7 +238,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                     </div>
                   )}
                   
-                  {file.type === 'application/json' && (
+                  {file.type === 'application/json' && content && (
                     <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg">
                       {JSON.stringify(content, null, 2)}
                     </pre>
