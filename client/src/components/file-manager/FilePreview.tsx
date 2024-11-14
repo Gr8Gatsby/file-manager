@@ -50,48 +50,35 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
     };
   }, [cleanupBlobUrl]);
 
-  async function streamFileContent(blob: Blob, type: string) {
-    const reader = blob.stream().getReader();
-    let buffer = '';
-    let processedRows: any[] = [];
-    let bytesRead = 0;
-    const totalBytes = blob.size;
+  async function streamFileContent(blob: Blob, onProgress: (progress: number) => void) {
+    const MAX_ROWS = 1000; // Maximum rows to display
     
-    const parser = Papa.parse('', {
-      header: true,
-      dynamicTyping: true,
-      chunk: (results) => {
-        processedRows = [...processedRows.slice(-999), ...results.data];
-        setContent(processedRows);
-      }
-    });
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        bytesRead += value.length;
-        setProgress(Math.round((bytesRead / totalBytes) * 100));
-        
-        const text = new TextDecoder().decode(value);
-        buffer += text;
-        
-        // For CSV/TSV, parse in chunks
-        if (type === 'text/csv' || type === 'text/tab-separated-values') {
-          parser.write(buffer);
-          buffer = '';
-        }
-      }
-
-      if (type === 'text/csv' || type === 'text/tab-separated-values') {
-        parser.finish();
-      }
+    return new Promise((resolve, reject) => {
+      let processedRows: any[] = [];
       
-      return buffer;
-    } finally {
-      reader.releaseLock();
-    }
+      Papa.parse(blob, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        chunk: (results) => {
+          // Keep only the latest MAX_ROWS
+          processedRows = [...processedRows, ...results.data].slice(-MAX_ROWS);
+          setContent(processedRows);
+        },
+        step: (results, parser) => {
+          // Update progress based on bytes processed
+          const progress = Math.min(100, Math.round((results.meta.cursor / blob.size) * 100));
+          onProgress(progress);
+        },
+        complete: () => {
+          onProgress(100);
+          resolve(processedRows);
+        },
+        error: (error) => {
+          reject(new Error(`CSV parsing error: ${error.message}`));
+        }
+      });
+    });
   }
 
   useEffect(() => {
@@ -108,7 +95,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       try {
         let fileBlob = file.data;
         
-        // Only try to decompress if it's actually compressed
+        // Only decompress if needed
         if (file.name.endsWith('.gz')) {
           try {
             const decompressedStream = new DecompressionStream('gzip');
@@ -124,7 +111,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             fileBlob = new Blob(chunks, { type: file.type });
           } catch (error) {
             console.error('Decompression error:', error);
-            // Fall back to using the original blob if decompression fails
             fileBlob = file.data;
           }
         }
@@ -152,7 +138,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           });
         } 
         else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
-          await streamFileContent(fileBlob, file.type);
+          await streamFileContent(fileBlob, setProgress);
           setIsLoading(false);
         }
         else if (file.type === 'application/json') {
@@ -185,13 +171,14 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           }
         }
         else {
-          const text = await streamFileContent(fileBlob, file.type);
+          const text = await fileBlob.text();
           setContent(text);
           setIsLoading(false);
         }
       } catch (err) {
         console.error('Error loading file:', err);
         setError(err instanceof Error ? err.message : 'Failed to load file content');
+      } finally {
         setIsLoading(false);
       }
     };
