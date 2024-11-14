@@ -55,9 +55,11 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             whileHover={{ scale: 1.02 }}
-            className="cursor-pointer"
           >
-            <Card className="backdrop-blur-lg bg-background/80 hover:bg-background/90">
+            <Card 
+              className="backdrop-blur-lg bg-background/80 hover:bg-background/90 cursor-pointer transition-colors"
+              onClick={() => onSelect(file.id)}
+            >
               <CardHeader className="flex flex-row items-center justify-between p-1.5">
                 {getFileIcon(file.type)}
                 <Button
@@ -72,10 +74,7 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </CardHeader>
-              <CardContent 
-                onClick={() => onSelect(file.id)}
-                className="px-1.5 pb-1.5 pt-0"
-              >
+              <CardContent className="px-1.5 pb-1.5 pt-0">
                 <h3 className="font-medium text-xs truncate text-foreground">{file.name}</h3>
                 <div className="flex justify-between items-center mt-0.5">
                   <span className="text-[10px] text-muted-foreground/90">{formatSize(file.size)}</span>
