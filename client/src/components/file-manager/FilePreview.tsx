@@ -62,29 +62,36 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       cleanupBlobUrl();
 
       try {
-        // Get array buffer from blob
-        const arrayBuffer = await file.data.arrayBuffer();
         let fileBlob = file.data;
-
-        // Only decompress if the file is actually compressed
-        if (file.data.type.includes('gzip') || file.name.endsWith('.gz')) {
-          const decompressedStream = new DecompressionStream('gzip');
-          const writer = decompressedStream.writable.getWriter();
-          await writer.write(arrayBuffer);
-          await writer.close();
-          fileBlob = await new Response(decompressedStream.readable).blob();
+        
+        // Only try to decompress if it's actually compressed
+        if (file.name.endsWith('.gz')) {
+          try {
+            const decompressedStream = new DecompressionStream('gzip');
+            const reader = file.data.stream().pipeThrough(decompressedStream).getReader();
+            const chunks = [];
+            
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              chunks.push(value);
+            }
+            
+            fileBlob = new Blob(chunks, { type: file.type });
+          } catch (error) {
+            console.error('Decompression error:', error);
+            // Fall back to using the original blob if decompression fails
+            fileBlob = file.data;
+          }
         }
-
-        // Set the correct type
-        fileBlob = new Blob([fileBlob], { type: file.type });
 
         // Handle different file types
         if (file.type.startsWith('image/')) {
           const blobUrl = URL.createObjectURL(fileBlob);
           blobUrlRef.current = blobUrl;
           
-          const img = new Image();
           await new Promise<void>((resolve, reject) => {
+            const img = new Image();
             img.onload = () => {
               setImageDimensions({
                 width: img.naturalWidth,
@@ -94,24 +101,42 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               setIsLoading(false);
               resolve();
             };
-            img.onerror = () => reject(new Error('Failed to load image'));
+            img.onerror = () => {
+              reject(new Error('Failed to load image'));
+            };
             img.src = blobUrl;
           });
-        } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
+        } 
+        else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
           const text = await fileBlob.text();
           Papa.parse(text, {
             header: true,
             dynamicTyping: true,
+            preview: 1000, // Limit to 1000 rows for performance
             complete: (results) => {
-              setContent(results.data.slice(-1000)); // Keep only latest 1000 rows
+              if (results.errors.length > 0) {
+                throw new Error(`CSV parsing error: ${results.errors[0].message}`);
+              }
+              setContent(results.data);
               setIsLoading(false);
             },
-            error: (error) => {
+            error: (error: Error) => {
               throw new Error(`CSV parsing error: ${error.message}`);
             }
           });
-        } else {
-          // Handle other text files
+        }
+        else if (file.type === 'application/json') {
+          const text = await fileBlob.text();
+          try {
+            const json = JSON.parse(text);
+            setContent(json);
+          } catch (error) {
+            throw new Error('Invalid JSON format');
+          }
+          setIsLoading(false);
+        }
+        else {
+          // For other text files, just show as plain text
           const text = await fileBlob.text();
           setContent(text);
           setIsLoading(false);
@@ -147,20 +172,22 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             
             <ScrollArea className="flex-1 p-3">
               <ErrorBoundary onError={(error) => setError(error.message)}>
-                {error && (
+                {error ? (
                   <Alert variant="destructive" className="mx-auto max-w-md">
                     <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{error}</AlertDescription>
+                    <AlertDescription>
+                      {error}
+                      <br />
+                      <span className="text-xs opacity-70">File type: {file.type}</span>
+                    </AlertDescription>
                   </Alert>
-                )}
-                
-                {isLoading ? (
+                ) : isLoading ? (
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="h-8 w-8 animate-spin" />
                     <div className="text-sm text-muted-foreground">
                       Loading {file.type.startsWith('image/') ? 'image' : 
                               file.type === 'text/csv' || file.type === 'text/tab-separated-values' ? 'spreadsheet' :
-                              'file'}...
+                              file.type === 'application/json' ? 'JSON' : 'file'}...
                     </div>
                     {progress > 0 && (
                       <div className="w-full max-w-xs">
@@ -216,9 +243,19 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                       </div>
                     )}
                     
-                    {file.type === 'application/json' && typeof content === 'string' && (
+                    {file.type === 'application/json' && content && (
                       <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg">
-                        {JSON.stringify(JSON.parse(content), null, 2)}
+                        {JSON.stringify(content, null, 2)}
+                      </pre>
+                    )}
+
+                    {!file.type.startsWith('image/') && 
+                      file.type !== 'text/csv' && 
+                      file.type !== 'text/tab-separated-values' && 
+                      file.type !== 'application/json' && 
+                      typeof content === 'string' && (
+                      <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg">
+                        {content}
                       </pre>
                     )}
                   </>
