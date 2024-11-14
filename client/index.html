@@ -4,21 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/file-manager/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="
-      default-src 'self';
-      script-src 'self' 'unsafe-eval' 'nonce-file-manager-app';
-      style-src 'self' 'unsafe-inline';
-      img-src 'self' blob: data:;
-      connect-src 'self' ws: wss:;
-      font-src 'self';
-      object-src 'none';
-      base-uri 'self';
-      form-action 'self';
-    " />
     <title>File Manager</title>
   </head>
   <body>
     <div id="root"></div>
-    <script nonce="file-manager-app" type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
