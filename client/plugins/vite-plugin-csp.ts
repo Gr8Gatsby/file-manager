@@ -7,8 +7,18 @@ export default function cspPlugin(): Plugin {
     transformIndexHtml(html) {
       const nonce = crypto.randomBytes(16).toString('base64');
       
-      // Add nonce to window for runtime access
-      const scriptToInject = `<script nonce="${nonce}">window.__CSP_NONCE__ = "${nonce}";</script>`;
+      // Add nonce to window and trusted types policy
+      const scriptToInject = `<script nonce="${nonce}">
+        window.__CSP_NONCE__ = "${nonce}";
+        // Add trusted types policy
+        if (window.trustedTypes) {
+          window.trustedTypes.createPolicy('default', {
+            createHTML: (html) => html,
+            createScript: (script) => script,
+            createScriptURL: (url) => url
+          });
+        }
+      </script>`;
       
       // Essential React inline style hashes
       const essentialStyleHashes = [
@@ -18,12 +28,12 @@ export default function cspPlugin(): Plugin {
         "'sha256-4z94HBtDQ7TATlXQpTKGg1rMyQvXAdMgvQ5YYOMBiDs='" // Chart styles
       ];
       
-      // Update CSP header with comprehensive style and script directives
+      // Update CSP header with trusted-types directive
       const updatedHtml = html.replace(
         /<meta http-equiv="Content-Security-Policy"[^>]*>/,
         `<meta http-equiv="Content-Security-Policy" content="
           default-src 'self';
-          script-src 'self' 'nonce-${nonce}' 'unsafe-eval';
+          script-src 'self' 'unsafe-eval' 'nonce-${nonce}';
           style-src 'self' ${essentialStyleHashes.join(' ')} 'nonce-${nonce}';
           img-src 'self' blob: data:;
           connect-src 'self' ws: wss:;
@@ -31,6 +41,7 @@ export default function cspPlugin(): Plugin {
           object-src 'none';
           base-uri 'self';
           form-action 'self';
+          trusted-types 'default';
         " />`
       );
       
