@@ -6,6 +6,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { VirtualizedList } from '@/components/ui/virtualized-list';
 import { validateHTML, sanitizeHTML } from '@/lib/html-utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import Papa from 'papaparse';
 
 interface FilePreviewProps {
@@ -154,10 +161,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
 
   if (!file) return null;
 
-  const htmlContent = typeof content === 'string' ? content : '';
-  const safeHtmlContent = typeof sanitizedContent === 'string' ? sanitizedContent : '';
-  const displayHtmlContent = htmlMode === 'raw' ? htmlContent : safeHtmlContent;
-
   return (
     <AnimatePresence>
       <motion.div
@@ -171,33 +174,20 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             <div className="flex items-center justify-between p-3 border-b">
               <h2 className="text-lg font-semibold truncate flex-1 pr-4">{file.name}</h2>
               {file.type === 'text/html' && content && (
-                <div className="flex items-center gap-2 mr-4">
-                  <div className="flex items-center rounded-lg border bg-muted">
-                    <Button
-                      variant={htmlMode === 'safe' ? 'secondary' : 'ghost'}
-                      size="sm"
-                      onClick={() => setHtmlMode('safe')}
-                      className="rounded-r-none"
-                    >
-                      Safe HTML
-                    </Button>
-                    <Button
-                      variant={htmlMode === 'raw' ? 'secondary' : 'ghost'}
-                      size="sm"
-                      onClick={() => setHtmlMode('raw')}
-                      className="rounded-l-none"
-                    >
-                      Raw HTML
-                    </Button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setHtmlMode(prev => prev === 'preview' ? (htmlMode === 'safe' ? 'safe' : 'raw') : 'preview')}
-                    className="ml-2"
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={htmlMode}
+                    onValueChange={(value: 'safe' | 'raw' | 'preview') => setHtmlMode(value)}
                   >
-                    {htmlMode === 'preview' ? 'Show Code' : 'Preview'}
-                  </Button>
+                    <SelectTrigger className="w-[120px]">
+                      <SelectValue placeholder="View mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="safe">Safe HTML</SelectItem>
+                      <SelectItem value="raw">Raw HTML</SelectItem>
+                      <SelectItem value="preview">Preview</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
               <Button variant="ghost" size="icon" onClick={onClose}>
@@ -242,24 +232,34 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                 ) : (
                   <>
                     {file.type === 'text/html' && typeof content === 'string' && (
-                      htmlMode === 'preview' ? (
-                        <div className="relative w-full h-[calc(100vh-12rem)] bg-white rounded-lg border">
-                          <iframe
-                            srcDoc={displayHtmlContent}
-                            className="w-full h-full rounded-lg"
-                            sandbox="allow-same-origin allow-scripts"
-                            title="HTML Preview"
-                          />
-                        </div>
-                      ) : (
-                        <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                          {displayHtmlContent.split('\n').map((line, i) => (
-                            <div key={i} className="px-2 hover:bg-muted-foreground/5">
-                              {line}
+                      <>
+                        {htmlMode === 'preview' ? (
+                          <div className="relative w-full h-[calc(100vh-12rem)]">
+                            <div className="absolute top-2 right-2 z-10 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
+                              Previewing {htmlMode === 'raw' ? 'Raw' : 'Safe'} HTML
                             </div>
-                          ))}
-                        </pre>
-                      )
+                            <iframe
+                              srcDoc={htmlMode === 'raw' ? content : sanitizedContent}
+                              className="w-full h-full rounded-lg border bg-white"
+                              sandbox={htmlMode === 'raw' ? 'allow-same-origin allow-scripts' : 'allow-same-origin'}
+                              title="HTML Preview"
+                            />
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
+                              {htmlMode === 'raw' ? 'Raw' : 'Safe'} HTML
+                            </div>
+                            <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
+                              {(htmlMode === 'raw' ? content : sanitizedContent).split('\n').map((line, i) => (
+                                <div key={i} className="px-2 hover:bg-muted-foreground/5">
+                                  {line}
+                                </div>
+                              ))}
+                            </pre>
+                          </div>
+                        )}
+                      </>
                     )}
                     
                     {file.type.startsWith('image/') && typeof content === 'string' && (
