@@ -30,13 +30,14 @@ export function UploadZone({ onFileSelect }: UploadZoneProps) {
       file.type === 'text/csv' ||
       file.type === 'text/tab-separated-values' ||
       file.type === 'application/json' ||
+      file.type === 'text/html' ||
       file.type.startsWith('image/')
     );
 
     if (!validFiles) {
       toast({
         title: "Invalid file type",
-        description: "Only CSV, TSV, JSON, and image files are supported",
+        description: "Only HTML, CSV, TSV, JSON, and image files are supported",
         variant: "destructive"
       });
       return;
@@ -57,7 +58,7 @@ export function UploadZone({ onFileSelect }: UploadZoneProps) {
           id="file-upload"
           className="hidden"
           multiple
-          accept=".csv,.tsv,.json,image/*"
+          accept=".html,.csv,.tsv,.json,image/*"
           onChange={(e) => e.target.files && onFileSelect(e.target.files)}
         />
         <label
@@ -81,7 +82,7 @@ export function UploadZone({ onFileSelect }: UploadZoneProps) {
               <span className="font-semibold">Click to upload</span> or drag and drop
             </p>
             <p className="text-xs text-muted-foreground">
-              CSV, TSV, JSON, and image files
+              HTML, CSV, TSV, JSON, and image files
             </p>
           </div>
         </label>

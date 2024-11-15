@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, AlertCircle, Loader2 } from 'lucide-react';
+import { X, AlertCircle, Loader2, Code, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { VirtualizedList } from '@/components/ui/virtualized-list';
+import { validateHTML, sanitizeHTML } from '@/lib/html-utils';
 import Papa from 'papaparse';
 
 interface FilePreviewProps {
@@ -35,6 +36,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [showHtmlSource, setShowHtmlSource] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
 
   const cleanupBlobUrl = useCallback(() => {
@@ -100,6 +102,17 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             img.onerror = () => reject(new Error('Failed to load image'));
             img.src = blobUrl;
           });
+        } else if (file.type === 'text/html') {
+          const text = await decompressedBlob.text();
+          const validation = validateHTML(text);
+          
+          if (!validation.isValid) {
+            throw new Error(`Invalid HTML: ${validation.errors.join(', ')}`);
+          }
+          
+          const sanitized = sanitizeHTML(text);
+          setContent(sanitized);
+          setIsLoading(false);
         } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
           const text = await decompressedBlob.text();
           Papa.parse(text, {
@@ -110,7 +123,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               if (results.errors.length > 0) {
                 console.warn('CSV parsing warnings:', results.errors);
               }
-              setContent(results.data.slice(0, 1000)); // Show first 1000 rows
+              setContent(results.data.slice(0, 1000));
               setIsLoading(false);
             },
             error: (error) => {
@@ -154,6 +167,16 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           <div className="bg-background rounded-lg shadow-lg h-full flex flex-col">
             <div className="flex items-center justify-between p-3 border-b">
               <h2 className="text-lg font-semibold truncate flex-1 pr-4">{file.name}</h2>
+              {file.type === 'text/html' && content && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowHtmlSource(!showHtmlSource)}
+                  className="mr-2"
+                >
+                  {showHtmlSource ? <Eye className="h-4 w-4" /> : <Code className="h-4 w-4" />}
+                </Button>
+              )}
               <Button variant="ghost" size="icon" onClick={onClose}>
                 <X className="h-4 w-4" />
               </Button>
@@ -175,6 +198,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                     <Loader2 className="h-8 w-8 animate-spin" />
                     <div className="text-sm text-muted-foreground">
                       Loading {file.type.startsWith('image/') ? 'image' : 
+                              file.type === 'text/html' ? 'HTML' :
                               file.type === 'text/csv' || file.type === 'text/tab-separated-values' ? 'spreadsheet' :
                               file.type === 'application/json' ? 'JSON' : 'file'}...
                     </div>
@@ -194,6 +218,21 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                   </div>
                 ) : (
                   <>
+                    {file.type === 'text/html' && typeof content === 'string' && (
+                      showHtmlSource ? (
+                        <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm">
+                          {content}
+                        </pre>
+                      ) : (
+                        <iframe
+                          srcDoc={content}
+                          className="w-full h-[calc(100vh-12rem)] rounded-lg border"
+                          sandbox="allow-same-origin"
+                          title="HTML Preview"
+                        />
+                      )
+                    )}
+                    
                     {file.type.startsWith('image/') && typeof content === 'string' && (
                       <div className="relative flex justify-center">
                         <img
@@ -235,6 +274,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                     )}
 
                     {!file.type.startsWith('image/') && 
+                      file.type !== 'text/html' &&
                       file.type !== 'text/csv' && 
                       file.type !== 'text/tab-separated-values' && 
                       file.type !== 'application/json' && 
