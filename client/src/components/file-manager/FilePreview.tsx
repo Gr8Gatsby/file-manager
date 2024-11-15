@@ -62,14 +62,14 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       cleanupBlobUrl();
 
       try {
-        // Create a new blob with the correct type
-        const fileBlob = new Blob([file.data], { type: file.type });
+        // Create a blob with the correct type
+        const fileBlob = new Blob([await file.data.arrayBuffer()], { type: file.type });
         
         if (file.type.startsWith('image/')) {
           const blobUrl = URL.createObjectURL(fileBlob);
           blobUrlRef.current = blobUrl;
           
-          await new Promise<void>((resolve, reject) => {
+          return new Promise<void>((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
               setImageDimensions({
@@ -80,11 +80,18 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               setIsLoading(false);
               resolve();
             };
-            img.onerror = () => reject(new Error('Failed to load image'));
+            img.onerror = () => {
+              reject(new Error('Failed to load image'));
+            };
             img.src = blobUrl;
           });
-        } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
-          const text = await fileBlob.text();
+        } 
+        
+        // For text-based files, read as text first
+        const text = await fileBlob.text();
+        
+        if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
+          // Parse CSV with Papa Parse
           Papa.parse(text, {
             header: true,
             dynamicTyping: true,
@@ -93,8 +100,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               if (results.errors.length > 0) {
                 throw new Error(`CSV parsing error: ${results.errors[0].message}`);
               }
-              setContent(results.data.slice(-1000)); // Limit to latest 1000 rows
-              setProgress(100);
+              setContent(results.data.slice(0, 1000)); // Show first 1000 rows
               setIsLoading(false);
             },
             error: (error) => {
@@ -102,27 +108,23 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             }
           });
         } else if (file.type === 'application/json') {
-          const text = await fileBlob.text();
           try {
-            // Handle potential BOM in JSON files
-            const cleanText = text.replace(/^﻿/, '');
-            const json = JSON.parse(cleanText);
-            setContent(json);
+            // Remove BOM if present and parse JSON
+            const cleanText = text.replace(/^\uFEFF/, '');
+            setContent(JSON.parse(cleanText));
           } catch (error) {
             console.error('JSON Parse Error:', error);
-            throw new Error(`Invalid JSON format: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            throw new Error('Invalid JSON format');
           }
           setIsLoading(false);
         } else {
-          // For other text files
-          const text = await fileBlob.text();
+          // For other text files, show as is
           setContent(text);
           setIsLoading(false);
         }
       } catch (err) {
         console.error('Error loading file:', err);
         setError(err instanceof Error ? err.message : 'Failed to load file content');
-      } finally {
         setIsLoading(false);
       }
     };
@@ -179,7 +181,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                         <p className="text-xs text-center mt-1">
                           {Math.round(progress)}% loaded
                           {file.type === 'text/csv' || file.type === 'text/tab-separated-values' 
-                            ? ' (showing latest 1000 rows)' 
+                            ? ' (showing first 1000 rows)' 
                             : ''
                           }
                         </p>
