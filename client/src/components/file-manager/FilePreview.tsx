@@ -62,7 +62,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       cleanupBlobUrl();
 
       try {
-        // Create a blob with the correct type
         const fileBlob = new Blob([await file.data.arrayBuffer()], { type: file.type });
         
         if (file.type.startsWith('image/')) {
@@ -85,26 +84,33 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             };
             img.src = blobUrl;
           });
-        } 
+        }
         
         // For text-based files, read as text first
         const text = await fileBlob.text();
         
         if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
-          // Parse CSV with Papa Parse
           Papa.parse(text, {
             header: true,
             dynamicTyping: true,
             skipEmptyLines: true,
+            transformHeader: (header) => header.trim(),
+            error: (error: Error) => {
+              throw new Error(`CSV parsing error: ${error.message}`);
+            },
             complete: (results) => {
               if (results.errors.length > 0) {
-                throw new Error(`CSV parsing error: ${results.errors[0].message}`);
+                console.warn('CSV parsing warnings:', results.errors);
               }
-              setContent(results.data.slice(0, 1000)); // Show first 1000 rows
+              
+              // Filter out empty rows and rows with insufficient data
+              const validRows = results.data.filter(row => 
+                Object.keys(row).length > 0 && 
+                Object.values(row).some(val => val !== null && val !== '')
+              );
+              
+              setContent(validRows.slice(0, 1000)); // Show first 1000 valid rows
               setIsLoading(false);
-            },
-            error: (error) => {
-              throw new Error(`CSV parsing error: ${error.message}`);
             }
           });
         } else if (file.type === 'application/json') {
