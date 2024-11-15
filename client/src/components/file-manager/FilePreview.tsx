@@ -104,12 +104,13 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           });
         } else if (file.type === 'text/html') {
           const text = await decompressedBlob.text();
+          // Validate HTML structure
           const validation = validateHTML(text);
-          
           if (!validation.isValid) {
             throw new Error(`Invalid HTML: ${validation.errors.join(', ')}`);
           }
           
+          // Sanitize and set content
           const sanitized = sanitizeHTML(text);
           setContent(sanitized);
           setIsLoading(false);
@@ -123,7 +124,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               if (results.errors.length > 0) {
                 console.warn('CSV parsing warnings:', results.errors);
               }
-              setContent(results.data.slice(0, 1000));
+              setContent(results.data.slice(0, 1000)); // Show first 1000 rows
               setIsLoading(false);
             },
             error: (error) => {
