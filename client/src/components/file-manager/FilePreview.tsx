@@ -172,26 +172,31 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               <h2 className="text-lg font-semibold truncate flex-1 pr-4">{file.name}</h2>
               {file.type === 'text/html' && content && (
                 <div className="flex items-center gap-2 mr-4">
+                  <div className="flex items-center rounded-lg border bg-muted">
+                    <Button
+                      variant={htmlMode === 'safe' ? 'secondary' : 'ghost'}
+                      size="sm"
+                      onClick={() => setHtmlMode('safe')}
+                      className="rounded-r-none"
+                    >
+                      Safe HTML
+                    </Button>
+                    <Button
+                      variant={htmlMode === 'raw' ? 'secondary' : 'ghost'}
+                      size="sm"
+                      onClick={() => setHtmlMode('raw')}
+                      className="rounded-l-none"
+                    >
+                      Raw HTML
+                    </Button>
+                  </div>
                   <Button
-                    variant={htmlMode === 'safe' ? 'default' : 'outline'}
+                    variant="outline"
                     size="sm"
-                    onClick={() => setHtmlMode('safe')}
+                    onClick={() => setHtmlMode(prev => prev === 'preview' ? (htmlMode === 'safe' ? 'safe' : 'raw') : 'preview')}
+                    className="ml-2"
                   >
-                    Safe HTML
-                  </Button>
-                  <Button
-                    variant={htmlMode === 'raw' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setHtmlMode('raw')}
-                  >
-                    Raw HTML
-                  </Button>
-                  <Button
-                    variant={htmlMode === 'preview' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setHtmlMode('preview')}
-                  >
-                    Preview
+                    {htmlMode === 'preview' ? 'Show Code' : 'Preview'}
                   </Button>
                 </div>
               )}
@@ -238,12 +243,14 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                   <>
                     {file.type === 'text/html' && typeof content === 'string' && (
                       htmlMode === 'preview' ? (
-                        <iframe
-                          srcDoc={displayHtmlContent}
-                          className="w-full h-[calc(100vh-12rem)] rounded-lg border bg-white"
-                          sandbox="allow-same-origin"
-                          title="HTML Preview"
-                        />
+                        <div className="relative w-full h-[calc(100vh-12rem)] bg-white rounded-lg border">
+                          <iframe
+                            srcDoc={displayHtmlContent}
+                            className="w-full h-full rounded-lg"
+                            sandbox="allow-same-origin allow-scripts"
+                            title="HTML Preview"
+                          />
+                        </div>
                       ) : (
                         <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
                           {displayHtmlContent.split('\n').map((line, i) => (
