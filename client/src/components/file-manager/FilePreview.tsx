@@ -104,9 +104,13 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           });
         } else if (file.type === 'text/html') {
           const text = await decompressedBlob.text();
+          const validationResult = validateHTML(text);
+          if (!validationResult.isValid) {
+            throw new Error(`Invalid HTML: ${validationResult.errors.join(', ')}`);
+          }
           const sanitized = sanitizeHTML(text);
-          setContent(text); // Store original content
-          setSanitizedContent(sanitized); // Store sanitized version
+          setContent(text);
+          setSanitizedContent(sanitized);
           setIsLoading(false);
         } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
           const text = await decompressedBlob.text();
@@ -121,7 +125,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               setContent(results.data.slice(0, 1000));
               setIsLoading(false);
             },
-            error: (error) => {
+            error: (error: Error) => {
               throw new Error(`CSV parsing error: ${error.message}`);
             }
           });
@@ -149,6 +153,10 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   }, [file, cleanupBlobUrl]);
 
   if (!file) return null;
+
+  const htmlContent = typeof content === 'string' ? content : '';
+  const safeHtmlContent = typeof sanitizedContent === 'string' ? sanitizedContent : '';
+  const displayHtmlContent = htmlMode === 'raw' ? htmlContent : safeHtmlContent;
 
   return (
     <AnimatePresence>
@@ -231,14 +239,14 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                     {file.type === 'text/html' && typeof content === 'string' && (
                       htmlMode === 'preview' ? (
                         <iframe
-                          srcDoc={htmlMode === 'raw' ? content : sanitizedContent}
+                          srcDoc={displayHtmlContent}
                           className="w-full h-[calc(100vh-12rem)] rounded-lg border bg-white"
                           sandbox="allow-same-origin"
                           title="HTML Preview"
                         />
                       ) : (
                         <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                          {(htmlMode === 'raw' ? content : sanitizedContent).split('\n').map((line, i) => (
+                          {displayHtmlContent.split('\n').map((line, i) => (
                             <div key={i} className="px-2 hover:bg-muted-foreground/5">
                               {line}
                             </div>
