@@ -1,18 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, AlertCircle, Loader2 } from 'lucide-react';
+import { X, AlertCircle, Loader2, Eye, Code } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { VirtualizedList } from '@/components/ui/virtualized-list';
 import { validateHTML, sanitizeHTML } from '@/lib/html-utils';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Switch } from '@/components/ui/switch';
 import Papa from 'papaparse';
 
 interface FilePreviewProps {
@@ -174,37 +168,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           <div className="bg-background rounded-lg shadow-lg h-full flex flex-col">
             <div className="flex items-center justify-between p-3 border-b">
               <h2 className="text-lg font-semibold truncate flex-1 pr-4">{file.name}</h2>
-              {file.type === 'text/html' && content && (
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={viewMode}
-                    onValueChange={(value: 'code' | 'preview') => setViewMode(value)}
-                  >
-                    <SelectTrigger className="w-[120px]">
-                      <SelectValue placeholder="View mode" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="code">Show Code</SelectItem>
-                      <SelectItem value="preview">Preview</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  {viewMode === 'preview' && (
-                    <Select
-                      value={htmlMode}
-                      onValueChange={(value: 'safe' | 'raw') => setHtmlMode(value)}
-                    >
-                      <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder="HTML mode" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="safe">Safe HTML</SelectItem>
-                        <SelectItem value="raw">Raw HTML</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              )}
               <Button variant="ghost" size="icon" onClick={onClose}>
                 <X className="h-4 w-4" />
               </Button>
@@ -247,9 +210,38 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                 ) : (
                   <>
                     {file.type === 'text/html' && typeof content === 'string' && (
-                      <>
+                      <div className="relative">
+                        <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setViewMode(v => v === 'code' ? 'preview' : 'code')}
+                            className="min-w-[100px]"
+                          >
+                            {viewMode === 'code' ? (
+                              <><Eye className="h-4 w-4 mr-2" /> Preview</>
+                            ) : (
+                              <><Code className="h-4 w-4 mr-2" /> Code</>
+                            )}
+                          </Button>
+
+                          {viewMode === 'preview' && (
+                            <div className="flex items-center gap-2 ml-4">
+                              <span className="text-sm text-muted-foreground">Safe</span>
+                              <Switch
+                                checked={htmlMode === 'raw'}
+                                onCheckedChange={(checked) => setHtmlMode(checked ? 'raw' : 'safe')}
+                              />
+                              <span className="text-sm text-muted-foreground">Raw</span>
+                            </div>
+                          )}
+                        </div>
+
                         {viewMode === 'preview' ? (
                           <div className="relative w-full h-[calc(100vh-12rem)]">
+                            <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
+                              Viewing {htmlMode} HTML
+                            </div>
                             <iframe
                               srcDoc={htmlMode === 'raw' ? content : sanitizedContent}
                               className="w-full h-full rounded-lg border bg-white"
@@ -266,7 +258,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                             ))}
                           </pre>
                         )}
-                      </>
+                      </div>
                     )}
                     
                     {file.type.startsWith('image/') && typeof content === 'string' && (
