@@ -36,11 +36,15 @@ export function validateHTML(content: string): HTMLValidationResult {
 
 export function sanitizeHTML(content: string): string {
   return DOMPurify.sanitize(content, {
-    FORBID_TAGS: ['script', 'style', 'iframe', 'frame', 'object', 'embed'],
+    FORBID_TAGS: ['iframe', 'frame', 'object', 'embed'],
     FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
-    ADD_TAGS: ['html', 'head', 'body'],
+    ADD_TAGS: ['html', 'head', 'body', 'style', 'script'],
+    ALLOWED_TAGS: ['style', 'script'],  // Explicitly allow these
+    ADD_ATTR: ['type', 'src'],  // Allow script attributes
     WHOLE_DOCUMENT: true,
     SANITIZE_DOM: true,
-    ALLOW_DATA_ATTR: false
+    ALLOW_DATA_ATTR: false,
+    RETURN_DOM_FRAGMENT: false,
+    RETURN_DOM: false
   });
 }
