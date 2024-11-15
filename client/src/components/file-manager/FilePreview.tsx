@@ -62,13 +62,31 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       cleanupBlobUrl();
 
       try {
-        const fileBlob = new Blob([await file.data.arrayBuffer()], { type: file.type });
+        // Create a decompression stream and process the file data
+        const compressedStream = file.data.stream();
+        const decompressedStream = compressedStream.pipeThrough(new DecompressionStream('gzip'));
+        const reader = decompressedStream.getReader();
+        
+        let chunks = [];
+        let totalSize = 0;
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          chunks.push(value);
+          totalSize += value.length;
+          setProgress(Math.round((totalSize / file.data.size) * 100));
+        }
+        
+        // Combine chunks and create new blob with correct type
+        const decompressedBlob = new Blob(chunks, { type: file.type });
         
         if (file.type.startsWith('image/')) {
-          const blobUrl = URL.createObjectURL(fileBlob);
+          const blobUrl = URL.createObjectURL(decompressedBlob);
           blobUrlRef.current = blobUrl;
           
-          return new Promise<void>((resolve, reject) => {
+          await new Promise<void>((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
               setImageDimensions({
@@ -79,52 +97,36 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               setIsLoading(false);
               resolve();
             };
-            img.onerror = () => {
-              reject(new Error('Failed to load image'));
-            };
+            img.onerror = () => reject(new Error('Failed to load image'));
             img.src = blobUrl;
           });
-        }
-        
-        // For text-based files, read as text first
-        const text = await fileBlob.text();
-        
-        if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
+        } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
+          const text = await decompressedBlob.text();
           Papa.parse(text, {
             header: true,
             dynamicTyping: true,
             skipEmptyLines: true,
-            transformHeader: (header) => header.trim(),
-            error: (error: Error) => {
-              throw new Error(`CSV parsing error: ${error.message}`);
-            },
             complete: (results) => {
               if (results.errors.length > 0) {
                 console.warn('CSV parsing warnings:', results.errors);
               }
-              
-              // Filter out empty rows and rows with insufficient data
-              const validRows = results.data.filter(row => 
-                Object.keys(row).length > 0 && 
-                Object.values(row).some(val => val !== null && val !== '')
-              );
-              
-              setContent(validRows.slice(0, 1000)); // Show first 1000 valid rows
+              setContent(results.data.slice(0, 1000)); // Show first 1000 rows
               setIsLoading(false);
+            },
+            error: (error) => {
+              throw new Error(`CSV parsing error: ${error.message}`);
             }
           });
         } else if (file.type === 'application/json') {
+          const text = await decompressedBlob.text();
           try {
-            // Remove BOM if present and parse JSON
-            const cleanText = text.replace(/^\uFEFF/, '');
-            setContent(JSON.parse(cleanText));
+            setContent(JSON.parse(text));
           } catch (error) {
-            console.error('JSON Parse Error:', error);
             throw new Error('Invalid JSON format');
           }
           setIsLoading(false);
         } else {
-          // For other text files, show as is
+          const text = await decompressedBlob.text();
           setContent(text);
           setIsLoading(false);
         }
@@ -186,10 +188,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                         </div>
                         <p className="text-xs text-center mt-1">
                           {Math.round(progress)}% loaded
-                          {file.type === 'text/csv' || file.type === 'text/tab-separated-values' 
-                            ? ' (showing first 1000 rows)' 
-                            : ''
-                          }
                         </p>
                       </div>
                     )}
@@ -217,7 +215,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                           rowHeight={40}
                           overscan={5}
                           renderRow={({ index, style }) => (
-                            <div key={`row-${index}`} style={style} className="flex gap-2 py-1 border-b">
+                            <div style={style} className="flex gap-2 py-1 border-b">
                               {Object.entries(content[index]).map(([key, value], i) => (
                                 <div key={`${index}-${key}-${i}`} className="flex-1 min-w-[100px] max-w-[200px] truncate">
                                   <span className="text-muted-foreground">{key}: </span>
