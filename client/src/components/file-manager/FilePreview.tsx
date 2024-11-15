@@ -225,22 +225,20 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                             )}
                           </Button>
 
-                          {viewMode === 'preview' && (
-                            <div className="flex items-center gap-2 ml-4">
-                              <span className="text-sm text-muted-foreground">Safe</span>
-                              <Switch
-                                checked={htmlMode === 'raw'}
-                                onCheckedChange={(checked) => setHtmlMode(checked ? 'raw' : 'safe')}
-                              />
-                              <span className="text-sm text-muted-foreground">Raw</span>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-2 ml-4">
+                            <span className="text-sm text-muted-foreground">Safe</span>
+                            <Switch
+                              checked={htmlMode === 'raw'}
+                              onCheckedChange={(checked) => setHtmlMode(checked ? 'raw' : 'safe')}
+                            />
+                            <span className="text-sm text-muted-foreground">Raw</span>
+                          </div>
                         </div>
 
                         {viewMode === 'preview' ? (
                           <div className="relative w-full h-[calc(100vh-12rem)]">
                             <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
-                              Viewing {htmlMode} HTML
+                              Previewing {htmlMode} HTML
                             </div>
                             <iframe
                               srcDoc={htmlMode === 'raw' ? content : sanitizedContent}
