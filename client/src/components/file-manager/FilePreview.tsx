@@ -188,6 +188,21 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                       <SelectItem value="preview">Preview</SelectItem>
                     </SelectContent>
                   </Select>
+                  
+                  {viewMode === 'preview' && (
+                    <Select
+                      value={htmlMode}
+                      onValueChange={(value: 'safe' | 'raw') => setHtmlMode(value)}
+                    >
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue placeholder="HTML mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="safe">Safe HTML</SelectItem>
+                        <SelectItem value="raw">Raw HTML</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               )}
               <Button variant="ghost" size="icon" onClick={onClose}>
@@ -235,17 +250,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                       <>
                         {viewMode === 'preview' ? (
                           <div className="relative w-full h-[calc(100vh-12rem)]">
-                            <div className="absolute top-2 right-2 z-10 flex items-center gap-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
-                              <span>Previewing {htmlMode} HTML</span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => setHtmlMode(mode => mode === 'safe' ? 'raw' : 'safe')}
-                              >
-                                Switch to {htmlMode === 'safe' ? 'Raw' : 'Safe'}
-                              </Button>
-                            </div>
                             <iframe
                               srcDoc={htmlMode === 'raw' ? content : sanitizedContent}
                               className="w-full h-full rounded-lg border bg-white"
