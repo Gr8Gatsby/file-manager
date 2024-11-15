@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, AlertCircle, Loader2, Code, Eye } from 'lucide-react';
+import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -32,11 +32,12 @@ function ErrorBoundary({ children, onError }: { children: React.ReactNode; onErr
 
 export function FilePreview({ file, onClose }: FilePreviewProps) {
   const [content, setContent] = useState<any[] | string | null>(null);
+  const [sanitizedContent, setSanitizedContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
-  const [htmlViewMode, setHtmlViewMode] = useState<'code' | 'preview'>('code');
+  const [htmlMode, setHtmlMode] = useState<'safe' | 'raw' | 'preview'>('safe');
   const blobUrlRef = useRef<string | null>(null);
 
   const cleanupBlobUrl = useCallback(() => {
@@ -59,6 +60,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       setIsLoading(true);
       setError(null);
       setContent(null);
+      setSanitizedContent(null);
       setProgress(0);
       setImageDimensions(null);
       cleanupBlobUrl();
@@ -102,13 +104,9 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           });
         } else if (file.type === 'text/html') {
           const text = await decompressedBlob.text();
-          const validation = validateHTML(text);
-          if (!validation.isValid) {
-            throw new Error(`Invalid HTML: ${validation.errors.join(', ')}`);
-          }
-          
           const sanitized = sanitizeHTML(text);
-          setContent(sanitized);
+          setContent(text); // Store original content
+          setSanitizedContent(sanitized); // Store sanitized version
           setIsLoading(false);
         } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
           const text = await decompressedBlob.text();
@@ -165,14 +163,29 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             <div className="flex items-center justify-between p-3 border-b">
               <h2 className="text-lg font-semibold truncate flex-1 pr-4">{file.name}</h2>
               {file.type === 'text/html' && content && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setHtmlViewMode(mode => mode === 'code' ? 'preview' : 'code')}
-                  className="mr-2"
-                >
-                  {htmlViewMode === 'code' ? <Eye className="h-4 w-4" /> : <Code className="h-4 w-4" />}
-                </Button>
+                <div className="flex items-center gap-2 mr-4">
+                  <Button
+                    variant={htmlMode === 'safe' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setHtmlMode('safe')}
+                  >
+                    Safe HTML
+                  </Button>
+                  <Button
+                    variant={htmlMode === 'raw' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setHtmlMode('raw')}
+                  >
+                    Raw HTML
+                  </Button>
+                  <Button
+                    variant={htmlMode === 'preview' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setHtmlMode('preview')}
+                  >
+                    Preview
+                  </Button>
+                </div>
               )}
               <Button variant="ghost" size="icon" onClick={onClose}>
                 <X className="h-4 w-4" />
@@ -216,21 +229,21 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                 ) : (
                   <>
                     {file.type === 'text/html' && typeof content === 'string' && (
-                      htmlViewMode === 'code' ? (
+                      htmlMode === 'preview' ? (
+                        <iframe
+                          srcDoc={htmlMode === 'raw' ? content : sanitizedContent}
+                          className="w-full h-[calc(100vh-12rem)] rounded-lg border bg-white"
+                          sandbox="allow-same-origin"
+                          title="HTML Preview"
+                        />
+                      ) : (
                         <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                          {content.split('\n').map((line, i) => (
+                          {(htmlMode === 'raw' ? content : sanitizedContent).split('\n').map((line, i) => (
                             <div key={i} className="px-2 hover:bg-muted-foreground/5">
                               {line}
                             </div>
                           ))}
                         </pre>
-                      ) : (
-                        <iframe
-                          srcDoc={content}
-                          className="w-full h-[calc(100vh-12rem)] rounded-lg border bg-white"
-                          sandbox="allow-same-origin"
-                          title="HTML Preview"
-                        />
                       )
                     )}
                     
