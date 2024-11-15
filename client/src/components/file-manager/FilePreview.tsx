@@ -62,54 +62,10 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       cleanupBlobUrl();
 
       try {
-        let fileBlob = file.data;
-        const MAX_ROWS = 1000;
+        // Create a new blob with the correct type
+        const fileBlob = new Blob([file.data], { type: file.type });
         
-        if (file.name.endsWith('.gz')) {
-          try {
-            const decompressedStream = new DecompressionStream('gzip');
-            const reader = file.data.stream().pipeThrough(decompressedStream).getReader();
-            const chunks = [];
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              chunks.push(value);
-            }
-            
-            fileBlob = new Blob(chunks, { type: file.type });
-          } catch (error) {
-            console.error('Decompression error:', error);
-            fileBlob = file.data;
-          }
-        }
-
-        if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
-          // Use Papa Parse's built-in streaming for CSV files
-          Papa.parse(fileBlob, {
-            header: true,
-            dynamicTyping: true,
-            skipEmptyLines: true,
-            chunk: (results) => {
-              setContent(prevContent => {
-                const newContent = prevContent ? [...prevContent, ...results.data] : results.data;
-                return newContent.slice(-MAX_ROWS); // Keep only latest 1000 rows
-              });
-            },
-            step: (results) => {
-              // Update progress based on bytes processed
-              const progress = Math.min(100, Math.round((results.meta.cursor / fileBlob.size) * 100));
-              setProgress(progress);
-            },
-            complete: () => {
-              setProgress(100);
-              setIsLoading(false);
-            },
-            error: (error) => {
-              throw new Error(`CSV parsing error: ${error.message}`);
-            }
-          });
-        } else if (file.type.startsWith('image/')) {
+        if (file.type.startsWith('image/')) {
           const blobUrl = URL.createObjectURL(fileBlob);
           blobUrlRef.current = blobUrl;
           
@@ -124,40 +80,41 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               setIsLoading(false);
               resolve();
             };
-            img.onerror = () => {
-              reject(new Error('Failed to load image'));
-            };
+            img.onerror = () => reject(new Error('Failed to load image'));
             img.src = blobUrl;
+          });
+        } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
+          const text = await fileBlob.text();
+          Papa.parse(text, {
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+              if (results.errors.length > 0) {
+                throw new Error(`CSV parsing error: ${results.errors[0].message}`);
+              }
+              setContent(results.data.slice(-1000)); // Limit to latest 1000 rows
+              setProgress(100);
+              setIsLoading(false);
+            },
+            error: (error) => {
+              throw new Error(`CSV parsing error: ${error.message}`);
+            }
           });
         } else if (file.type === 'application/json') {
           const text = await fileBlob.text();
           try {
-            // First verify we have valid text content
-            if (!text.trim()) {
-              throw new Error('Empty JSON file');
-            }
-            
-            // Try to parse JSON with better error handling
-            let json;
-            try {
-              json = JSON.parse(text);
-            } catch (parseError: unknown) {
-              console.error('JSON Parse Error:', parseError);
-              throw new Error(`Invalid JSON format: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-            }
-            
-            // Validate we got an actual object or array
-            if (typeof json !== 'object' || json === null) {
-              throw new Error('Invalid JSON content: expected object or array');
-            }
-            
+            // Handle potential BOM in JSON files
+            const cleanText = text.replace(/^﻿/, '');
+            const json = JSON.parse(cleanText);
             setContent(json);
-            setIsLoading(false);
-          } catch (error: unknown) {
-            console.error('JSON Processing Error:', error);
-            throw new Error(`JSON Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          } catch (error) {
+            console.error('JSON Parse Error:', error);
+            throw new Error(`Invalid JSON format: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
+          setIsLoading(false);
         } else {
+          // For other text files
           const text = await fileBlob.text();
           setContent(text);
           setIsLoading(false);
