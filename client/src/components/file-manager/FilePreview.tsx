@@ -36,7 +36,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
-  const [showHtmlSource, setShowHtmlSource] = useState(false);
+  const [htmlViewMode, setHtmlViewMode] = useState<'code' | 'preview'>('code');
   const blobUrlRef = useRef<string | null>(null);
 
   const cleanupBlobUrl = useCallback(() => {
@@ -64,7 +64,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
       cleanupBlobUrl();
 
       try {
-        // Create a decompression stream and process the file data
         const compressedStream = file.data.stream();
         const decompressedStream = compressedStream.pipeThrough(new DecompressionStream('gzip'));
         const reader = decompressedStream.getReader();
@@ -81,7 +80,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           setProgress(Math.round((totalSize / file.data.size) * 100));
         }
         
-        // Combine chunks and create new blob with correct type
         const decompressedBlob = new Blob(chunks, { type: file.type });
         
         if (file.type.startsWith('image/')) {
@@ -104,13 +102,11 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           });
         } else if (file.type === 'text/html') {
           const text = await decompressedBlob.text();
-          // Validate HTML structure
           const validation = validateHTML(text);
           if (!validation.isValid) {
             throw new Error(`Invalid HTML: ${validation.errors.join(', ')}`);
           }
           
-          // Sanitize and set content
           const sanitized = sanitizeHTML(text);
           setContent(sanitized);
           setIsLoading(false);
@@ -124,7 +120,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               if (results.errors.length > 0) {
                 console.warn('CSV parsing warnings:', results.errors);
               }
-              setContent(results.data.slice(0, 1000)); // Show first 1000 rows
+              setContent(results.data.slice(0, 1000));
               setIsLoading(false);
             },
             error: (error) => {
@@ -172,10 +168,10 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setShowHtmlSource(!showHtmlSource)}
+                  onClick={() => setHtmlViewMode(mode => mode === 'code' ? 'preview' : 'code')}
                   className="mr-2"
                 >
-                  {showHtmlSource ? <Eye className="h-4 w-4" /> : <Code className="h-4 w-4" />}
+                  {htmlViewMode === 'code' ? <Eye className="h-4 w-4" /> : <Code className="h-4 w-4" />}
                 </Button>
               )}
               <Button variant="ghost" size="icon" onClick={onClose}>
@@ -220,14 +216,18 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                 ) : (
                   <>
                     {file.type === 'text/html' && typeof content === 'string' && (
-                      showHtmlSource ? (
-                        <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm">
-                          {content}
+                      htmlViewMode === 'code' ? (
+                        <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
+                          {content.split('\n').map((line, i) => (
+                            <div key={i} className="px-2 hover:bg-muted-foreground/5">
+                              {line}
+                            </div>
+                          ))}
                         </pre>
                       ) : (
                         <iframe
                           srcDoc={content}
-                          className="w-full h-[calc(100vh-12rem)] rounded-lg border"
+                          className="w-full h-[calc(100vh-12rem)] rounded-lg border bg-white"
                           sandbox="allow-same-origin"
                           title="HTML Preview"
                         />
