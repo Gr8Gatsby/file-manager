@@ -44,7 +44,8 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
-  const [htmlMode, setHtmlMode] = useState<'safe' | 'raw' | 'preview'>('safe');
+  const [viewMode, setViewMode] = useState<'code' | 'preview'>('code');
+  const [htmlMode, setHtmlMode] = useState<'safe' | 'raw'>('safe');
   const blobUrlRef = useRef<string | null>(null);
 
   const cleanupBlobUrl = useCallback(() => {
@@ -176,15 +177,14 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
               {file.type === 'text/html' && content && (
                 <div className="flex items-center gap-2">
                   <Select
-                    value={htmlMode}
-                    onValueChange={(value: 'safe' | 'raw' | 'preview') => setHtmlMode(value)}
+                    value={viewMode}
+                    onValueChange={(value: 'code' | 'preview') => setViewMode(value)}
                   >
                     <SelectTrigger className="w-[120px]">
                       <SelectValue placeholder="View mode" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="safe">Safe HTML</SelectItem>
-                      <SelectItem value="raw">Raw HTML</SelectItem>
+                      <SelectItem value="code">Show Code</SelectItem>
                       <SelectItem value="preview">Preview</SelectItem>
                     </SelectContent>
                   </Select>
@@ -233,10 +233,18 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                   <>
                     {file.type === 'text/html' && typeof content === 'string' && (
                       <>
-                        {htmlMode === 'preview' ? (
+                        {viewMode === 'preview' ? (
                           <div className="relative w-full h-[calc(100vh-12rem)]">
-                            <div className="absolute top-2 right-2 z-10 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
-                              Previewing {htmlMode === 'raw' ? 'Raw' : 'Safe'} HTML
+                            <div className="absolute top-2 right-2 z-10 flex items-center gap-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
+                              <span>Previewing {htmlMode} HTML</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => setHtmlMode(mode => mode === 'safe' ? 'raw' : 'safe')}
+                              >
+                                Switch to {htmlMode === 'safe' ? 'Raw' : 'Safe'}
+                              </Button>
                             </div>
                             <iframe
                               srcDoc={htmlMode === 'raw' ? content : sanitizedContent}
@@ -246,18 +254,13 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                             />
                           </div>
                         ) : (
-                          <div className="relative">
-                            <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
-                              {htmlMode === 'raw' ? 'Raw' : 'Safe'} HTML
-                            </div>
-                            <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                              {(htmlMode === 'raw' ? content : sanitizedContent).split('\n').map((line, i) => (
-                                <div key={i} className="px-2 hover:bg-muted-foreground/5">
-                                  {line}
-                                </div>
-                              ))}
-                            </pre>
-                          </div>
+                          <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
+                            {(htmlMode === 'raw' ? content : sanitizedContent).split('\n').map((line, i) => (
+                              <div key={i} className="px-2 hover:bg-muted-foreground/5">
+                                {line}
+                              </div>
+                            ))}
+                          </pre>
                         )}
                       </>
                     )}
