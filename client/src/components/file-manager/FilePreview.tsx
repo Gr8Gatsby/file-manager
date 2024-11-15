@@ -55,6 +55,50 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
     };
   }, [cleanupBlobUrl]);
 
+  const getHtmlWithInjectedData = useCallback((htmlContent: string, rawContent: any) => {
+    const injectData = {
+      data: rawContent,
+      __isSecureContext: true
+    };
+
+    const htmlWithData = `
+      ${htmlContent}
+      <script>
+        window.__INJECTED_DATA__ = ${JSON.stringify(injectData)};
+        
+        // Example usage documentation
+        /*
+          This HTML file can access injected JSON data through window.__INJECTED_DATA__.data
+          
+          Example usage:
+          document.addEventListener('DOMContentLoaded', () => {
+            const data = window.__INJECTED_DATA__.data;
+            
+            if (data) {
+              // Example: Create a list from JSON array
+              if (Array.isArray(data)) {
+                const list = document.createElement('ul');
+                data.forEach(item => {
+                  const li = document.createElement('li');
+                  li.textContent = JSON.stringify(item);
+                  list.appendChild(li);
+                });
+                document.body.appendChild(list);
+              }
+              
+              // Example: Display JSON object
+              const pre = document.createElement('pre');
+              pre.textContent = JSON.stringify(data, null, 2);
+              document.body.appendChild(pre);
+            }
+          });
+        */
+      </script>
+    `;
+
+    return htmlWithData;
+  }, []);
+
   useEffect(() => {
     const loadContent = async () => {
       if (!file) return;
@@ -134,7 +178,8 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
         } else if (file.type === 'application/json') {
           const text = await decompressedBlob.text();
           try {
-            setContent(JSON.parse(text));
+            const jsonData = JSON.parse(text);
+            setContent(jsonData);
           } catch (error) {
             throw new Error('Invalid JSON format');
           }
@@ -155,6 +200,10 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   }, [file, cleanupBlobUrl]);
 
   if (!file) return null;
+
+  const htmlContent = file.type === 'text/html' && typeof content === 'string' 
+    ? getHtmlWithInjectedData(htmlMode === 'raw' ? content : sanitizedContent || '', content)
+    : null;
 
   return (
     <AnimatePresence>
@@ -209,7 +258,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                   </div>
                 ) : (
                   <>
-                    {file.type === 'text/html' && typeof content === 'string' && (
+                    {file.type === 'text/html' && htmlContent && (
                       <div className="relative">
                         <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
                           <Button
@@ -241,7 +290,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                               Previewing {htmlMode} HTML
                             </div>
                             <iframe
-                              srcDoc={htmlMode === 'raw' ? content : sanitizedContent}
+                              srcDoc={htmlContent}
                               className="w-full h-full rounded-lg border bg-white"
                               sandbox={htmlMode === 'raw' ? 'allow-same-origin allow-scripts' : 'allow-same-origin'}
                               title="HTML Preview"
@@ -249,7 +298,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                           </div>
                         ) : (
                           <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                            {(htmlMode === 'raw' ? content : sanitizedContent).split('\n').map((line, i) => (
+                            {htmlContent?.split('\n').map((line, i) => (
                               <div key={i} className="px-2 hover:bg-muted-foreground/5">
                                 {line}
                               </div>
