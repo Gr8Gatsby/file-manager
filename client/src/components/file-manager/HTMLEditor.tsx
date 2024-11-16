@@ -214,7 +214,6 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                   // Inject all associated data
                   const iframe = e.currentTarget;
                   associatedData.forEach(data => {
-                    const dataPreview = JSON.stringify(data.data).substring(0, 50);
                     const message = {
                       type: 'jsonData',
                       payload: {
@@ -226,13 +225,14 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                     
                     toast({
                       title: 'Data Injected',
-                      description: `postMessage: {
-    type: 'jsonData',
-    payload: {
-      title: '${data.name}',
-      data: ${dataPreview}${dataPreview.length >= 50 ? '...' : ''}
-    }
-  }`
+                      description: `Sending:
+{
+  type: 'jsonData',
+  payload: {
+    title: '${data.name}',
+    data: ${JSON.stringify(data.data).substring(0, 50)}...
+  }
+}`
                     });
                   });
                 }}
