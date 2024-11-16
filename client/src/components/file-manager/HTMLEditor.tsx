@@ -225,7 +225,13 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                     
                     toast({
                       title: 'Data Injected',
-                      description: `postMessage: { type: 'jsonData', payload: { title: '${data.name}' } }`
+                      description: `postMessage: {
+    type: 'jsonData',
+    payload: {
+      title: '${data.name}',
+      data: ${JSON.stringify(data.data).substring(0, 50)}...
+    }
+  }`
                     });
                   });
                 }}
