@@ -99,7 +99,6 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
 
       const iframe = document.querySelector('iframe');
       if (iframe && iframe.contentWindow) {
-        // Send data to iframe
         iframe.contentWindow.postMessage({
           type: 'jsonData',
           payload: {
@@ -110,13 +109,8 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
         
         toast({
           title: 'Data Injected',
-          description: `postMessage: {
-  type: 'jsonData',
-  payload: {
-    title: '${jsonFile.name}',
-    data: /* truncated for display */
-  }
-}`
+          description: `${jsonFile.name} data has been injected`,
+          duration: 3000
         });
       }
     } catch (error) {

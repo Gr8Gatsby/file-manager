@@ -11,7 +11,7 @@ import { JsonAssociationManager } from './JsonAssociationManager';
 import { fileDB } from '@/lib/db';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
-import { JsonDataMapper, DataMapping } from './JsonDataMapper';
+// import { JsonDataMapper, DataMapping } from './JsonDataMapper';  // Removed as per intention
 
 interface HTMLEditorProps {
   fileId: string;
@@ -29,7 +29,7 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   const [preview, setPreview] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [isValidating, setIsValidating] = useState(false);
-  const [associatedData, setAssociatedData] = useState<Array<{ name: string; data: any; mapping?: DataMapping[] }>>([]);
+  const [associatedData, setAssociatedData] = useState<Array<{ name: string; data: any }>>([]);
   const [lastInjection, setLastInjection] = useState<{ name: string; timestamp: number } | null>(null);
   const [validationResults, setValidationResults] = useState<Map<string, { isValid: boolean; errors: string[] }>>(new Map());
 
@@ -82,9 +82,6 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
     .json-data-item {
       padding: 4px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      display: flex;
-      align-items: center;
-      gap: 4px;
     }
     .json-data-item:last-child {
       border-bottom: none;
@@ -95,13 +92,6 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
     @keyframes highlight {
       0% { background: rgba(59, 130, 246, 0.5); }
       100% { background: transparent; }
-    }
-    .update-indicator {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #22c55e;
-      margin-right: 4px;
     }
     .validation-status {
       position: fixed;
@@ -129,61 +119,11 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   <h1>Hello World</h1>
   <div id="data-container"></div>
   <script>
-    // Store all JSON data in a global object
-    window.jsonDataStore = {};
-    window.dataMappings = {};
-
     window.addEventListener('message', function(event) {
       if (event.data.type === 'jsonData') {
-        const { title, data, mapping } = event.data.payload;
-        const prevData = window.jsonDataStore[title];
-        const isUpdate = prevData !== undefined;
+        const { title, data } = event.data.payload;
         
-        // Store the data and mapping
-        window.jsonDataStore[title] = data;
-        window.dataMappings[title] = mapping || [];
-        
-        // Apply mappings if available
-        if (mapping && mapping.length > 0) {
-          mapping.forEach(map => {
-            const getValue = (obj, path) => {
-              return path.split('.').reduce((acc, part) => {
-                if (part.includes('[*]')) {
-                  const arrayPath = part.replace('[*]', '');
-                  return acc[arrayPath]?.map(item => item).join(', ') || '';
-                }
-                return acc?.[part];
-              }, obj);
-            };
-
-            const value = getValue(data, map.jsonPath);
-            const targets = document.querySelectorAll(map.targetSelector);
-            
-            targets.forEach(target => {
-              if (!target) return;
-              
-              switch (map.updateType) {
-                case 'text':
-                  target.textContent = value;
-                  break;
-                case 'html':
-                  target.innerHTML = value;
-                  break;
-                case 'attribute':
-                  if (map.attributeName) {
-                    target.setAttribute(map.attributeName, value);
-                  }
-                  break;
-              }
-              
-              // Add animation class
-              target.classList.add('data-updated');
-              setTimeout(() => target.classList.remove('data-updated'), 1000);
-            });
-          });
-        }
-        
-        // Update indicator content
+        // Update indicator
         let indicator = document.querySelector('.json-data-indicator');
         if (!indicator) {
           indicator = document.createElement('div');
@@ -191,68 +131,18 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
           document.body.appendChild(indicator);
         }
 
-        indicator.innerHTML = Object.keys(window.jsonDataStore)
-          .map(key => {
-            const isLatest = key === title;
-            const mappingCount = window.dataMappings[key]?.length || 0;
-            return \`
-              <div class="json-data-item \${isLatest && isUpdate ? 'updated' : ''}">
-                \${isLatest ? '<div class="update-indicator"></div>' : ''}
-                \${key} (\${mappingCount} mappings)
-              </div>
-            \`;
-          })
-          .join('');
+        const dataItem = document.createElement('div');
+        dataItem.className = 'json-data-item updated';
+        dataItem.textContent = title;
         
-        // Dispatch custom events
+        indicator.innerHTML = '';
+        indicator.appendChild(dataItem);
+        
+        // Dispatch event for any external handlers
         window.dispatchEvent(new CustomEvent('jsonDataReceived', {
-          detail: {
-            source: title,
-            data,
-            allData: window.jsonDataStore,
-            isUpdate,
-            mapping
-          }
+          detail: { source: title, data }
         }));
-        
-        window.dispatchEvent(new CustomEvent('contentUpdated'));
       }
-    });
-
-    // Helper function to access data from any JSON file
-    window.getJsonData = function(fileName) {
-      return window.jsonDataStore[fileName];
-    };
-
-    // Listen for content updates and notify parent
-    window.addEventListener('contentUpdated', function() {
-      window.parent.postMessage({
-        type: 'previewUpdated',
-        payload: {
-          dataCount: Object.keys(window.jsonDataStore).length
-        }
-      }, '*');
-    });
-
-    // Add schema validation status display
-    window.addEventListener('jsonDataReceived', function(event) {
-      const { source, data, isValid, validationErrors } = event.detail;
-      
-      let statusContainer = document.querySelector('.validation-status');
-      if (!statusContainer) {
-        statusContainer = document.createElement('div');
-        statusContainer.className = 'validation-status';
-        document.body.appendChild(statusContainer);
-      }
-
-      const statusHtml = \`
-        <div class="\${isValid ? 'validation-success' : 'validation-error'}">
-          \${source}: \${isValid ? '✓ Valid' : '✗ Invalid'}
-          \${!isValid ? '<ul>' + validationErrors.map(err => '<li>' + err + '</li>').join('') + '</ul>' : ''}
-        </div>
-      \`;
-      
-      statusContainer.innerHTML = statusHtml;
     });
   </script>
 </body>
@@ -326,7 +216,6 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   useEffect(() => {
     loadAssociatedData();
 
-    // Add message listener for preview updates
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'previewUpdated') {
         const { dataCount } = event.data.payload;
@@ -409,20 +298,7 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
               className="flex-1 font-mono text-sm h-full overflow-y-auto resize-none"
               placeholder="Enter HTML content..."
             />
-            {associatedData.map((data, index) => (
-              <div key={data.name} className="mt-4">
-                <h4 className="text-sm font-medium mb-2">Mapping for {data.name}</h4>
-                <JsonDataMapper
-                  jsonData={data.data}
-                  initialMapping={data.mapping}
-                  onMappingChange={(mapping) => {
-                    const updatedData = [...associatedData];
-                    updatedData[index] = { ...data, mapping };
-                    setAssociatedData(updatedData);
-                  }}
-                />
-              </div>
-            ))}
+            {/* Removed JsonDataMapper as per intention */}
           </div>
         </ResizablePanel>
         
@@ -451,17 +327,13 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                 sandbox="allow-same-origin allow-scripts"
                 title="HTML Preview"
                 onLoad={(e) => {
-                  // Inject all associated data
                   const iframe = e.currentTarget;
                   associatedData.forEach(data => {
                     const message = {
                       type: 'jsonData',
                       payload: {
                         title: data.name,
-                        data: data.data,
-                        isValid: data.isValid,
-                        validationErrors: data.validationErrors,
-                        mapping: data.mapping
+                        data: data.data
                       }
                     };
                     iframe.contentWindow?.postMessage(message, '*');
@@ -470,9 +342,7 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                     
                     toast({
                       title: 'Data Injected',
-                      description: `${data.name} data injected with ${
-                        data.mapping ? `${data.mapping.length} mappings` : 'no mappings'
-                      }`,
+                      description: `${data.name} data has been injected`,
                       duration: 3000
                     });
                   });
@@ -487,11 +357,8 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button 
-          type="submit" 
-          disabled={errors.length > 0 || Array.from(validationResults.values()).some(r => !r.isValid)}
-        >
-          Save
+        <Button type="submit" disabled={errors.length > 0}>
+          Save Changes
         </Button>
       </div>
     </form>
