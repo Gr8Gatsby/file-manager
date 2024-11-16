@@ -8,7 +8,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { VirtualizedList } from '@/components/ui/virtualized-list';
 import { validateHTML, sanitizeHTML, formatHTML } from '@/lib/html-utils';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useTheme } from '@/hooks/use-theme';
+import { useToast } from '@/hooks/use-toast';
 import { compressBlob } from '@/lib/compression';
 import { fileDB } from '@/lib/db';
 import Papa from 'papaparse';
@@ -40,6 +42,7 @@ function ErrorBoundary({ children, onError }: { children: React.ReactNode; onErr
 
 export function FilePreview({ file, onClose, isEditing, onEditingChange, onRename }: FilePreviewProps) {
   const { theme } = useTheme();
+  const { toast } = useToast();
   const [content, setContent] = useState<any[] | string | null>(null);
   const [sanitizedContent, setSanitizedContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +52,8 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
   const [viewMode, setViewMode] = useState<'code' | 'preview'>('code');
   const [htmlMode, setHtmlMode] = useState<'safe' | 'raw'>('safe');
   const [isRenaming, setIsRenaming] = useState(false);
+  const [jsonFiles, setJsonFiles] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedJson, setSelectedJson] = useState<string | null>(null);
   const blobUrlRef = useRef<string | null>(null);
   const fileNameRef = useRef<HTMLHeadingElement>(null);
 
@@ -64,6 +69,57 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
       cleanupBlobUrl();
     };
   }, [cleanupBlobUrl]);
+
+  useEffect(() => {
+    const loadJsonFiles = async () => {
+      const allFiles = await fileDB.getAllFiles();
+      setJsonFiles(allFiles.filter(f => f.type === 'application/json'));
+    };
+    loadJsonFiles();
+  }, []);
+
+  const injectJsonData = async (jsonId: string) => {
+    const jsonFile = await fileDB.getFile(jsonId);
+    if (!jsonFile) return;
+    
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const jsonData = JSON.parse(reader.result as string);
+        const iframe = document.querySelector('iframe');
+        if (iframe && iframe.contentWindow) {
+          // Wait for iframe to load
+          await new Promise((resolve) => {
+            iframe.onload = resolve;
+            iframe.src = iframe.src;
+          });
+          
+          // Send data to iframe
+          iframe.contentWindow.postMessage({
+            type: 'jsonData',
+            payload: {
+              title: jsonFile.name,
+              data: jsonData
+            }
+          }, '*');
+          
+          toast({
+            title: 'Data Injected',
+            description: `${jsonFile.name} data has been sent to the page`
+          });
+        }
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: 'Failed to parse JSON data',
+          variant: 'destructive'
+        });
+      }
+    };
+    
+    const blob = await jsonFile.data.stream().pipeThrough(new DecompressionStream('gzip')).blob();
+    reader.readAsText(blob);
+  };
 
   const handleSave = async () => {
     if (!file || typeof content !== 'string') return;
@@ -119,7 +175,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
         onRename(file.id, newName);
       }
       setIsRenaming(false);
-      fileNameRef.current.textContent = fileName;
+      fileNameRef.current!.textContent = fileName;
       input.remove();
     };
   
@@ -131,7 +187,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
       }
       if (e.key === 'Escape') {
         setIsRenaming(false);
-        fileNameRef.current.textContent = fileName;
+        fileNameRef.current!.textContent = fileName;
         input.remove();
       }
     };
@@ -264,8 +320,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
               <div className="flex items-center gap-2 flex-1 pr-4">
                 <h2 
                   ref={fileNameRef}
-                  className="text-lg font-semibold truncate flex-1 cursor-text select-none"
-                  onMouseDown={(e) => e.preventDefault()}
+                  className="text-lg font-semibold truncate flex-1 cursor-text"
                   onDoubleClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -370,6 +425,27 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
                               <><Code className="h-4 w-4 mr-2" /> Code</>
                             )}
                           </Button>
+
+                          {viewMode === 'preview' && (
+                            <Select 
+                              value={selectedJson || ''} 
+                              onValueChange={(value) => {
+                                setSelectedJson(value);
+                                if (value) injectJsonData(value);
+                              }}
+                            >
+                              <SelectTrigger className="w-[200px]">
+                                <SelectValue placeholder="Select JSON data" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {jsonFiles.map(file => (
+                                  <SelectItem key={file.id} value={file.id}>
+                                    {file.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
 
                           <div className="flex items-center gap-2 ml-4">
                             <span className="text-sm text-muted-foreground">Safe</span>
