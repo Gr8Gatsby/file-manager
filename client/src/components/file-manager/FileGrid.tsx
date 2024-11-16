@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { File, FileText, Image, Trash2 } from 'lucide-react';
+import { File, FileText, Image, Trash2, Edit2 } from 'lucide-react';
 import { useState } from 'react';
 import {
   Card,
@@ -62,17 +62,32 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
             >
               <CardHeader className="flex flex-row items-center justify-between p-1.5">
                 {getFileIcon(file.type)}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteId(file.id);
-                  }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex gap-1">
+                  {(file.type === 'application/json' || file.type === 'text/html') && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(file.id);
+                      }}
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteId(file.id);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="px-1.5 pb-1.5 pt-0">
                 <h3 className="font-medium text-xs truncate text-foreground">{file.name}</h3>
