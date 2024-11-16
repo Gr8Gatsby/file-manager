@@ -190,10 +190,10 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
 
       <ResizablePanelGroup direction="horizontal">
         <ResizablePanel defaultSize={50}>
-          <div className="h-full flex flex-col">
+          <div className="h-full flex flex-col overflow-y-auto">
             <Textarea
               {...register('content')}
-              className="flex-1 font-mono text-sm resize-none"
+              className="flex-1 font-mono text-sm min-h-[400px] resize-none"
               placeholder="Enter HTML content..."
             />
           </div>
@@ -238,11 +238,12 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                     
                     toast({
                       title: 'Data Injected',
-                      description: `postMessage: {
+                      description: `Sending:
+{
   type: 'jsonData',
   payload: {
     title: '${data.name}',
-    data: /* preview */
+    data: ${JSON.stringify(data.data).substring(0, 100)}...
   }
 }`
                     });
