@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, AlertCircle, Loader2, Eye, Code, Edit2, Save } from 'lucide-react';
+import { X, AlertCircle, Loader2, Eye, Code, Edit2, Save, Edit3 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -48,7 +48,9 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [viewMode, setViewMode] = useState<'code' | 'preview'>('code');
   const [htmlMode, setHtmlMode] = useState<'safe' | 'raw'>('safe');
+  const [isRenaming, setIsRenaming] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
+  const fileNameRef = useRef<string>('');
 
   const cleanupBlobUrl = useCallback(() => {
     if (blobUrlRef.current) {
@@ -200,6 +202,60 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
     loadContent();
   }, [file, cleanupBlobUrl]);
 
+  const handleRename = useCallback((input: HTMLInputElement) => {
+    if (!file || !onRename) return;
+    
+    const fileName = file.name;
+    const extension = fileName.substring(fileName.lastIndexOf('.'));
+    const newName = input.value + extension;
+    
+    if (newName !== fileName) {
+      onRename(file.id, newName);
+    }
+    setIsRenaming(false);
+  }, [file, onRename]);
+
+  const startRename = useCallback(() => {
+    if (!file || !onRename || isRenaming) return;
+    
+    setIsRenaming(true);
+    const h2 = document.querySelector('[data-file-name]');
+    if (!h2) return;
+
+    const fileName = file.name;
+    const extension = fileName.substring(fileName.lastIndexOf('.'));
+    const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
+    fileNameRef.current = fileName;
+
+    const input = document.createElement('input');
+    input.value = nameWithoutExt;
+    input.className = 'text-lg font-semibold w-full p-1 rounded border focus:outline-none focus:ring-1 focus:ring-primary';
+    
+    const save = () => handleRename(input);
+    
+    input.onblur = () => {
+      save();
+      h2.textContent = fileNameRef.current;
+    };
+    
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        save();
+        h2.textContent = fileNameRef.current;
+      }
+      if (e.key === 'Escape') {
+        h2.textContent = fileNameRef.current;
+        setIsRenaming(false);
+      }
+    };
+    
+    h2.textContent = '';
+    h2.appendChild(input);
+    input.focus();
+    input.select();
+  }, [file, onRename, isRenaming, handleRename]);
+
   if (!file) return null;
 
   const canEdit = file && (
@@ -218,49 +274,26 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
         <div className="container max-w-4xl h-full py-4 mx-auto">
           <div className="bg-background rounded-lg shadow-lg h-full flex flex-col">
             <div className="flex items-center justify-between p-3 border-b">
-              <h2 
-                className="text-lg font-semibold truncate flex-1 pr-4 cursor-text"
-                onDoubleClick={(e) => {
-                  if (!file || !onRename) return;
-                  
-                  const fileName = file.name;
-                  const extension = fileName.substring(fileName.lastIndexOf('.'));
-                  const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
-                  
-                  const h2 = e.currentTarget;
-                  const input = document.createElement('input');
-                  input.value = nameWithoutExt;
-                  input.className = 'text-lg font-semibold w-full p-1 rounded border focus:outline-none focus:ring-1 focus:ring-primary';
-                  
-                  const save = () => {
-                    const newName = input.value + extension;
-                    if (onRename) {
-                      onRename(file.id, newName);
-                    }
-                    h2.textContent = newName;
-                    input.remove();
-                  };
-                  
-                  input.onblur = save;
-                  input.onkeydown = (e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      save();
-                    }
-                    if (e.key === 'Escape') {
-                      h2.textContent = fileName;
-                      input.remove();
-                    }
-                  };
-                  
-                  h2.textContent = '';
-                  h2.appendChild(input);
-                  input.focus();
-                  input.select();
-                }}
-              >
-                {file.name}
-              </h2>
+              <div className="flex items-center gap-2 flex-1 pr-4">
+                <h2 
+                  data-file-name
+                  className="text-lg font-semibold truncate flex-1 cursor-text"
+                  onDoubleClick={() => startRename()}
+                >
+                  {file.name}
+                </h2>
+                {onRename && !isRenaming && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => startRename()}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    <span className="sr-only">Rename</span>
+                  </Button>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 {canEdit && (
                   <>
