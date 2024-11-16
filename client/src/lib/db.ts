@@ -25,6 +25,10 @@ class FileDatabase {
   private isInitializing = false;
   private operationQueue: QueuedOperation[] = [];
   private initialized = false;
+  private retryCount = 0;
+  private maxRetries = 3;
+  private retryDelay = 1000;
+  private upgradeLock = false;
 
   private async executeQueuedOperations() {
     while (this.operationQueue.length > 0) {
@@ -41,7 +45,7 @@ class FileDatabase {
   }
 
   private queueOperation<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.initialized && this.db) {
+    if (this.initialized && this.db && !this.upgradeLock) {
       return operation();
     }
 
@@ -58,31 +62,84 @@ class FileDatabase {
     });
   }
 
-  async init(): Promise<void> {
-    if (this.initialized) return;
-    if (this.isInitializing) return this.initPromise;
+  private async waitForUpgrade(): Promise<void> {
+    if (!this.upgradeLock) return;
+    
+    const checkLock = async (resolve: () => void) => {
+      if (!this.upgradeLock) {
+        resolve();
+      } else {
+        setTimeout(() => checkLock(resolve), 100);
+      }
+    };
 
-    this.isInitializing = true;
-    this.initPromise = new Promise<void>(async (resolve, reject) => {
-      try {
-        this.db = await openDB(this.dbName, this.version, {
-          upgrade(db, oldVersion) {
+    return new Promise(resolve => checkLock(resolve));
+  }
+
+  private async initWithRetry(): Promise<void> {
+    try {
+      this.upgradeLock = true;
+      this.db = await openDB(this.dbName, this.version, {
+        blocking: () => {
+          // Close the database if another version is trying to upgrade
+          if (this.db) {
+            this.db.close();
+            this.db = null;
+            this.initialized = false;
+          }
+        },
+        terminated: () => {
+          this.db = null;
+          this.initialized = false;
+        },
+        upgrade: async (db, oldVersion, newVersion, transaction) => {
+          try {
             if (!db.objectStoreNames.contains('files')) {
               const store = db.createObjectStore('files', { keyPath: 'id' });
               store.createIndex('name', 'name');
               store.createIndex('type', 'type');
               store.createIndex('createdAt', 'createdAt');
+              store.createIndex('associatedFiles', 'associatedFiles', { multiEntry: true });
             }
-            if (oldVersion < 2 && db.objectStoreNames.contains('files')) {
-              const store = db.transaction('files', 'readwrite').objectStore('files');
-              if (!store.indexNames.contains('associatedFiles')) {
-                store.createIndex('associatedFiles', 'associatedFiles', { multiEntry: true });
-              }
-            }
-          },
-        });
-        
-        this.initialized = true;
+            
+            // Wait for the transaction to complete
+            await new Promise((resolve, reject) => {
+              transaction.addEventListener('complete', resolve);
+              transaction.addEventListener('error', reject);
+              transaction.addEventListener('abort', () => reject(new Error('Upgrade transaction aborted')));
+            });
+          } catch (error) {
+            console.error('Error during upgrade:', error);
+            throw error;
+          }
+        },
+      });
+      
+      this.initialized = true;
+      this.retryCount = 0;
+    } catch (error) {
+      this.retryCount++;
+      if (this.retryCount < this.maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+        return this.initWithRetry();
+      }
+      throw error;
+    } finally {
+      this.upgradeLock = false;
+    }
+  }
+
+  async init(): Promise<void> {
+    if (this.initialized) return;
+    if (this.isInitializing) {
+      await this.initPromise;
+      return;
+    }
+
+    this.isInitializing = true;
+    this.initPromise = new Promise<void>(async (resolve, reject) => {
+      try {
+        await this.initWithRetry();
         await this.executeQueuedOperations();
         resolve();
       } catch (error) {
@@ -91,6 +148,7 @@ class FileDatabase {
         reject(error instanceof Error ? error : new Error('Failed to initialize database'));
       } finally {
         this.isInitializing = false;
+        this.initPromise = null;
       }
     });
 
@@ -98,6 +156,7 @@ class FileDatabase {
   }
 
   async addFile(file: FileEntry): Promise<void> {
+    await this.waitForUpgrade();
     return this.queueOperation(async () => {
       if (!this.db) throw new Error('Database not initialized');
       await this.db.put('files', file);
@@ -105,6 +164,7 @@ class FileDatabase {
   }
 
   async getFile(id: string): Promise<FileEntry | undefined> {
+    await this.waitForUpgrade();
     return this.queueOperation(async () => {
       if (!this.db) throw new Error('Database not initialized');
       return await this.db.get('files', id);
@@ -112,6 +172,7 @@ class FileDatabase {
   }
 
   async getAllFiles(): Promise<FileEntry[]> {
+    await this.waitForUpgrade();
     return this.queueOperation(async () => {
       if (!this.db) throw new Error('Database not initialized');
       return await this.db.getAll('files');
@@ -119,10 +180,10 @@ class FileDatabase {
   }
 
   async deleteFile(id: string): Promise<void> {
+    await this.waitForUpgrade();
     return this.queueOperation(async () => {
       if (!this.db) throw new Error('Database not initialized');
       
-      // Remove associations from other files
       const files = await this.getAllFiles();
       for (const file of files) {
         if (file.associatedFiles?.includes(id)) {
@@ -138,6 +199,7 @@ class FileDatabase {
   }
 
   async getStorageUsage(): Promise<{ total: number; compressed: number }> {
+    await this.waitForUpgrade();
     return this.queueOperation(async () => {
       if (!this.db) throw new Error('Database not initialized');
       const files = await this.getAllFiles();
@@ -152,6 +214,7 @@ class FileDatabase {
   }
 
   async associateFiles(htmlFileId: string, jsonFileId: string): Promise<void> {
+    await this.waitForUpgrade();
     return this.queueOperation(async () => {
       if (!this.db) throw new Error('Database not initialized');
       
@@ -169,6 +232,7 @@ class FileDatabase {
   }
 
   async removeAssociation(htmlFileId: string, jsonFileId: string): Promise<void> {
+    await this.waitForUpgrade();
     return this.queueOperation(async () => {
       if (!this.db) throw new Error('Database not initialized');
       
@@ -183,6 +247,7 @@ class FileDatabase {
   }
 
   async getAssociatedFiles(fileId: string): Promise<FileEntry[]> {
+    await this.waitForUpgrade();
     return this.queueOperation(async () => {
       if (!this.db) throw new Error('Database not initialized');
       
