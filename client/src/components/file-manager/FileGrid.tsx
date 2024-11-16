@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { File, FileText, Image, Trash2, Edit2, Pencil } from 'lucide-react';
+import { File, FileText, Image, Trash2, Edit2 } from 'lucide-react';
 import { useState } from 'react';
 import {
   Card,
@@ -64,17 +64,6 @@ export function FileGrid({ files, onDelete, onSelect, onRename }: FileGridProps)
               <CardHeader className="flex flex-row items-center justify-between p-1.5">
                 {getFileIcon(file.type)}
                 <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRename(file.id, file.name);
-                    }}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
                   {(file.type === 'application/json' || file.type === 'text/html') && (
                     <Button
                       variant="ghost"
@@ -102,7 +91,39 @@ export function FileGrid({ files, onDelete, onSelect, onRename }: FileGridProps)
                 </div>
               </CardHeader>
               <CardContent className="px-1.5 pb-1.5 pt-0">
-                <h3 className="font-medium text-xs truncate text-foreground">{file.name}</h3>
+                <h3 
+                  className="font-medium text-xs truncate text-foreground cursor-text"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    const fileName = file.name;
+                    const extension = fileName.substring(fileName.lastIndexOf('.'));
+                    const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
+                    
+                    // Create inline edit input
+                    const input = document.createElement('input');
+                    input.value = nameWithoutExt;
+                    input.className = 'w-full text-xs p-0.5 rounded border focus:outline-none focus:ring-1 focus:ring-primary';
+                    
+                    const save = () => {
+                      const newName = input.value + extension;
+                      onRename(file.id, newName);
+                      h3.replaceWith(nameElement);
+                    };
+                    
+                    input.onblur = save;
+                    input.onkeydown = (e) => {
+                      if (e.key === 'Enter') save();
+                      if (e.key === 'Escape') h3.replaceWith(nameElement);
+                    };
+                    
+                    const nameElement = e.currentTarget;
+                    const h3 = nameElement.parentElement!;
+                    h3.replaceWith(input);
+                    input.select();
+                  }}
+                >
+                  {file.name}
+                </h3>
                 <div className="flex justify-between items-center mt-0.5">
                   <span className="text-[10px] text-muted-foreground/90">{formatSize(file.size)}</span>
                   <span className="text-[10px] text-muted-foreground/90">

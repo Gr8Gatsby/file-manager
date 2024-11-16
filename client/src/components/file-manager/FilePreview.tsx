@@ -23,6 +23,7 @@ interface FilePreviewProps {
   onClose: () => void;
   isEditing?: boolean;
   onEditingChange?: (editing: boolean) => void;
+  onRename?: (id: string, name: string) => void;
 }
 
 function ErrorBoundary({ children, onError }: { children: React.ReactNode; onError: (error: Error) => void }) {
@@ -37,7 +38,7 @@ function ErrorBoundary({ children, onError }: { children: React.ReactNode; onErr
   return <>{children}</>;
 }
 
-export function FilePreview({ file, onClose, isEditing, onEditingChange }: FilePreviewProps) {
+export function FilePreview({ file, onClose, isEditing, onEditingChange, onRename }: FilePreviewProps) {
   const { theme } = useTheme();
   const [content, setContent] = useState<any[] | string | null>(null);
   const [sanitizedContent, setSanitizedContent] = useState<string | null>(null);
@@ -76,6 +77,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
           setError(`Invalid HTML: ${validationResult.errors.join(', ')}`);
           return;
         }
+        finalContent = formatHTML(content);
       }
 
       const blob = new Blob([finalContent], { type: file.type });
@@ -153,7 +155,8 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
             throw new Error(`Invalid HTML: ${validationResult.errors.join(', ')}`);
           }
           const sanitized = sanitizeHTML(text);
-          setContent(text);
+          const formatted = formatHTML(text);
+          setContent(formatted);
           setSanitizedContent(sanitized);
           setIsLoading(false);
         } else if (file.type === 'text/csv' || file.type === 'text/tab-separated-values') {
@@ -177,7 +180,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
           const text = await decompressedBlob.text();
           try {
             const jsonData = JSON.parse(text);
-            setContent(jsonData);
+            setContent(JSON.stringify(jsonData, null, 2));
           } catch (error) {
             throw new Error('Invalid JSON format');
           }
@@ -201,7 +204,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
 
   const canEdit = file && (
     (file.type === 'text/html' && typeof content === 'string') ||
-    (file.type === 'application/json' && (typeof content === 'string' || content !== null))
+    (file.type === 'application/json' && typeof content === 'string')
   );
 
   return (
@@ -215,7 +218,44 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
         <div className="container max-w-4xl h-full py-4 mx-auto">
           <div className="bg-background rounded-lg shadow-lg h-full flex flex-col">
             <div className="flex items-center justify-between p-3 border-b">
-              <h2 className="text-lg font-semibold truncate flex-1 pr-4">{file.name}</h2>
+              <h2 
+                className="text-lg font-semibold truncate flex-1 pr-4 cursor-text"
+                onDoubleClick={(e) => {
+                  if (!file || !onRename) return;
+                  
+                  const fileName = file.name;
+                  const extension = fileName.substring(fileName.lastIndexOf('.'));
+                  const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
+                  
+                  // Create inline edit input
+                  const input = document.createElement('input');
+                  input.value = nameWithoutExt;
+                  input.className = 'text-lg font-semibold w-full p-1 rounded border focus:outline-none focus:ring-1 focus:ring-primary';
+                  
+                  const save = () => {
+                    const newName = input.value + extension;
+                    onRename(file.id, newName);
+                    const h2 = input.parentElement!;
+                    h2.textContent = newName;
+                  };
+                  
+                  input.onblur = save;
+                  input.onkeydown = (e) => {
+                    if (e.key === 'Enter') save();
+                    if (e.key === 'Escape') {
+                      const h2 = input.parentElement!;
+                      h2.textContent = fileName;
+                    }
+                  };
+                  
+                  const h2 = e.currentTarget;
+                  h2.textContent = '';
+                  h2.appendChild(input);
+                  input.select();
+                }}
+              >
+                {file.name}
+              </h2>
               <div className="flex items-center gap-2">
                 {canEdit && (
                   <>
@@ -317,7 +357,18 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                               defaultLanguage="html"
                               defaultValue={content}
                               theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                              onChange={(value) => setContent(value || '')}
+                              onChange={(value) => {
+                                setContent(value || '');
+                                if (value) {
+                                  const validationResult = validateHTML(value);
+                                  if (validationResult.isValid) {
+                                    setSanitizedContent(sanitizeHTML(value));
+                                    setError(null);
+                                  } else {
+                                    setError(`Invalid HTML: ${validationResult.errors.join(', ')}`);
+                                  }
+                                }
+                              }}
                               options={{
                                 minimap: { enabled: false },
                                 fontSize: 14,
@@ -366,7 +417,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                             <Editor
                               height="100%"
                               defaultLanguage="json"
-                              defaultValue={typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
+                              defaultValue={content}
                               theme={theme === 'dark' ? 'vs-dark' : 'light'}
                               onChange={(value) => setContent(value || '')}
                               options={{
@@ -384,42 +435,46 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                           </div>
                         ) : (
                           <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                            {typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
+                            {content}
                           </pre>
                         )}
                       </div>
                     )}
 
                     {file.type.startsWith('image/') && content && (
-                      <div className="relative">
-                        <img
-                          src={typeof content === 'string' ? content : ''}
-                          alt={file.name}
-                          className="max-w-full h-auto rounded-lg mx-auto"
-                        />
-                        {imageDimensions && (
-                          <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
-                            {imageDimensions.width} × {imageDimensions.height}
-                          </div>
-                        )}
+                      <div className="flex flex-col items-center justify-center h-full">
+                        <div className="relative max-w-full max-h-full">
+                          <img
+                            src={content}
+                            alt={file.name}
+                            className="rounded-lg shadow-lg object-contain max-h-[calc(100vh-12rem)]"
+                          />
+                          {imageDimensions && (
+                            <div className="absolute bottom-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
+                              {imageDimensions.width} × {imageDimensions.height}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
 
-                    {Array.isArray(content) && content.length > 0 && (
-                      <VirtualizedList
-                        data={content}
-                        rowHeight={40}
-                        overscan={5}
-                        renderRow={({ index, style }) => (
-                          <div style={style} className="flex gap-2 py-1 border-b">
-                            {Object.values(content[index]).map((cell, i) => (
-                              <div key={i} className="flex-1 truncate">
-                                {typeof cell === 'object' ? JSON.stringify(cell) : String(cell)}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      />
+                    {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && (
+                      <div className="h-full">
+                        <VirtualizedList
+                          data={content}
+                          rowHeight={40}
+                          overscan={5}
+                          renderRow={({ index, style }) => (
+                            <div style={style} className="flex gap-2 py-1 border-b">
+                              {Object.values(content[index]).map((cell, i) => (
+                                <div key={i} className="flex-1 truncate">
+                                  {typeof cell === 'object' ? JSON.stringify(cell) : String(cell)}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        />
+                      </div>
                     )}
                   </div>
                 )}
