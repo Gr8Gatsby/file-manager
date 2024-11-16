@@ -29,7 +29,7 @@ export function RenameDialog({ open, onOpenChange, initialName, onRename }: Rena
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Enter file name"
-          className="mt-4"
+          className="mt-4 bg-background text-foreground"
           autoFocus
         />
         <DialogFooter className="mt-4">

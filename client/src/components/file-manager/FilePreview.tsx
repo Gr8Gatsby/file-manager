@@ -113,7 +113,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
     
     const input = document.createElement('input');
     input.value = nameWithoutExt;
-    input.className = 'text-lg font-semibold w-full p-1 rounded border focus:outline-none focus:ring-1 focus:ring-primary';
+    input.className = 'text-lg font-semibold w-full p-1 rounded border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
     
     const handleSave = () => {
       if (!onRename) return;
