@@ -103,29 +103,26 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
 
   const startRename = useCallback(() => {
     if (!file || !onRename || isRenaming || !fileNameRef.current) return;
-    
-    const h2 = fileNameRef.current;
+  
     setIsRenaming(true);
-    
     const fileName = file.name;
     const extension = fileName.substring(fileName.lastIndexOf('.'));
     const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
-    
+  
     const input = document.createElement('input');
     input.value = nameWithoutExt;
     input.className = 'text-lg font-semibold w-full p-1 rounded border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
-    
+  
     const handleSave = () => {
-      if (!onRename) return;
       const newName = input.value + extension;
       if (newName !== fileName) {
         onRename(file.id, newName);
       }
       setIsRenaming(false);
+      fileNameRef.current.textContent = fileName;
       input.remove();
-      h2.textContent = fileName;
     };
-    
+  
     input.onblur = handleSave;
     input.onkeydown = (e) => {
       if (e.key === 'Enter') {
@@ -134,13 +131,13 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
       }
       if (e.key === 'Escape') {
         setIsRenaming(false);
+        fileNameRef.current.textContent = fileName;
         input.remove();
-        h2.textContent = fileName;
       }
     };
-    
-    h2.textContent = '';
-    h2.appendChild(input);
+  
+    fileNameRef.current.textContent = '';
+    fileNameRef.current.appendChild(input);
     input.focus();
     input.select();
   }, [file, onRename, isRenaming]);
@@ -267,7 +264,6 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
               <div className="flex items-center gap-2 flex-1 pr-4">
                 <h2 
                   ref={fileNameRef}
-                  data-file-name
                   className="text-lg font-semibold truncate flex-1 cursor-text select-none"
                   onMouseDown={(e) => e.preventDefault()}
                   onDoubleClick={(e) => {
