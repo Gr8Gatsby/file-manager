@@ -225,12 +225,11 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                     
                     toast({
                       title: 'Data Injected',
-                      description: `Sending:
-{
+                      description: `postMessage: {
   type: 'jsonData',
   payload: {
     title: '${data.name}',
-    data: ${JSON.stringify(data.data).substring(0, 50)}...
+    data: /* preview */
   }
 }`
                     });
