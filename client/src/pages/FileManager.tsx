@@ -8,6 +8,14 @@ import { UploadZone } from '@/components/file-manager/UploadZone';
 import { SearchBar } from '@/components/file-manager/SearchBar';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { useToast } from '@/hooks/use-toast';
+import { FilePlus, FileCode, FileCog } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 
 export function FileManager() {
   const [files, setFiles] = useState<any[]>([]);
@@ -29,6 +37,55 @@ export function FileManager() {
     setFiles(allFiles);
     const usage = await fileDB.getStorageUsage();
     setStorageStats(usage);
+  };
+
+  const handleNewFile = async (type: 'html' | 'json') => {
+    const defaultContent = type === 'html' ? 
+      `<!DOCTYPE html>
+<html>
+<head>
+  <title>New Document</title>
+</head>
+<body>
+  <h1>Hello World</h1>
+</body>
+</html>` :
+      `{
+  "name": "New Document",
+  "description": "A new JSON file"
+}`;
+
+    const id = crypto.randomUUID();
+    const fileName = `new-document.${type}`;
+    const fileType = type === 'html' ? 'text/html' : 'application/json';
+    const blob = new Blob([defaultContent], { type: fileType });
+    const compressed = await compressBlob(blob);
+
+    try {
+      await fileDB.addFile({
+        id,
+        name: fileName,
+        type: fileType,
+        size: blob.size,
+        compressedSize: compressed.size,
+        data: compressed,
+        createdAt: new Date(),
+      });
+
+      toast({
+        title: "File created",
+        description: `Created new ${type.toUpperCase()} file`,
+      });
+
+      loadFiles();
+      handleFileSelect(id, true);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: `Failed to create ${type.toUpperCase()} file`,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleUpload = async (fileList: FileList) => {
@@ -75,7 +132,7 @@ export function FileManager() {
   const handleFileSelect = async (id: string, editMode: boolean = false) => {
     const file = await fileDB.getFile(id);
     setSelectedFile(file);
-    setIsEditing(editMode); // Set edit mode based on the parameter
+    setIsEditing(editMode);
   };
 
   const filteredFiles = useMemo(() => {
@@ -115,9 +172,29 @@ export function FileManager() {
       <header className="sticky top-0 z-10 backdrop-blur-lg border-b border-border bg-background/95 dark:bg-background/90">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-semibold text-foreground dark:text-white">File Manager</h1>
-          <div className="flex items-center gap-2 bg-muted dark:bg-muted/20 rounded-lg px-3 py-2">
-            <span className="text-sm text-muted-foreground dark:text-muted-foreground/90">Theme</span>
-            <ThemeToggle />
+          <div className="flex items-center gap-4">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <FilePlus className="h-4 w-4 mr-2" />
+                  New File
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => handleNewFile('html')}>
+                  <FileCode className="h-4 w-4 mr-2" />
+                  HTML File
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleNewFile('json')}>
+                  <FileCog className="h-4 w-4 mr-2" />
+                  JSON File
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className="flex items-center gap-2 bg-muted dark:bg-muted/20 rounded-lg px-3 py-2">
+              <span className="text-sm text-muted-foreground">Theme</span>
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </header>
