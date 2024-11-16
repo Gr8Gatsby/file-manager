@@ -30,7 +30,7 @@ interface FileGridProps {
     createdAt: Date;
   }>;
   onDelete: (id: string) => void;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, editMode?: boolean) => void;
 }
 
 export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
@@ -58,7 +58,7 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
           >
             <Card 
               className="backdrop-blur-lg bg-background/80 hover:bg-background/90 cursor-pointer transition-colors"
-              onClick={() => onSelect(file.id)}
+              onClick={() => onSelect(file.id, false)}
             >
               <CardHeader className="flex flex-row items-center justify-between p-1.5">
                 {getFileIcon(file.type)}
@@ -70,7 +70,7 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
                       className="h-6 w-6"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onSelect(file.id);
+                        onSelect(file.id, true);
                       }}
                     >
                       <Edit2 className="h-4 w-4" />

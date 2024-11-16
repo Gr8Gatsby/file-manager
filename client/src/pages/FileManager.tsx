@@ -17,6 +17,7 @@ export function FileManager() {
   const [sortBy, setSortBy] = useState('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [fileType, setFileType] = useState('all');
+  const [isEditing, setIsEditing] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -71,9 +72,12 @@ export function FileManager() {
     });
   };
 
-  const handleFileSelect = async (id: string) => {
+  const handleFileSelect = async (id: string, editMode: boolean = false) => {
     const file = await fileDB.getFile(id);
     setSelectedFile(file);
+    if (editMode) {
+      setIsEditing(true);
+    }
   };
 
   const filteredFiles = useMemo(() => {
@@ -155,7 +159,12 @@ export function FileManager() {
 
       <FilePreview
         file={selectedFile}
-        onClose={() => setSelectedFile(null)}
+        onClose={() => {
+          setSelectedFile(null);
+          setIsEditing(false);
+        }}
+        isEditing={isEditing}
+        onEditingChange={setIsEditing}
       />
     </div>
   );
