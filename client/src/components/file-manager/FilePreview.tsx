@@ -110,7 +110,13 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
         
         toast({
           title: 'Data Injected',
-          description: `${jsonFile.name} data has been sent to the page`
+          description: `postMessage: {
+  type: 'jsonData',
+  payload: {
+    title: '${jsonFile.name}',
+    data: /* truncated for display */
+  }
+}`
         });
       }
     } catch (error) {
