@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { JsonAssociationManager } from './JsonAssociationManager';
 import { fileDB } from '@/lib/db';
+import { useToast } from '@/hooks/use-toast';
 
 interface HTMLEditorProps {
   fileId: string;
@@ -21,6 +22,7 @@ interface FormData {
 }
 
 export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HTMLEditorProps) {
+  const { toast } = useToast();
   const [preview, setPreview] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [isValidating, setIsValidating] = useState(false);
@@ -212,13 +214,19 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                   // Inject all associated data
                   const iframe = e.currentTarget;
                   associatedData.forEach(data => {
-                    iframe.contentWindow?.postMessage({
+                    const message = {
                       type: 'jsonData',
                       payload: {
                         title: data.name,
                         data: data.data
                       }
-                    }, '*');
+                    };
+                    iframe.contentWindow?.postMessage(message, '*');
+                    
+                    toast({
+                      title: 'Data Injected',
+                      description: `postMessage: { type: 'jsonData', payload: { title: '${data.name}' } }`
+                    });
                   });
                 }}
               />
