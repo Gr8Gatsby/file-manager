@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertCircle, Loader2, Eye, Code, Edit2, Save, Edit3 } from 'lucide-react';
-import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
 import { VirtualizedList } from '@/components/ui/virtualized-list';
 import { validateHTML, sanitizeHTML, formatHTML } from '@/lib/html-utils';
 import { Switch } from '@/components/ui/switch';
@@ -465,16 +465,10 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
                             </div>
 
                             {viewMode === 'code' ? (
-                              <Editor
+                              <Textarea
                                 height="100%"
-                                defaultLanguage="html"
                                 value={content as string}
-                                theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                                options={{
-                                  readOnly: true,
-                                  minimap: { enabled: false },
-                                  scrollBeyondLastLine: false,
-                                }}
+                                readOnly={true}
                               />
                             ) : (
                               <iframe
@@ -490,16 +484,10 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
                     )}
 
                     {file.type === 'application/json' && (
-                      <Editor
+                      <Textarea
                         height="100%"
-                        defaultLanguage="json"
                         value={content as string}
-                        theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                        options={{
-                          readOnly: !isEditing,
-                          minimap: { enabled: false },
-                          scrollBeyondLastLine: false,
-                        }}
+                        readOnly={!isEditing}
                         onChange={(value) => {
                           if (isEditing) {
                             setContent(value || '');
