@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { compressBlob } from '@/lib/compression';
 import { fileDB } from '@/lib/db';
 import Papa from 'papaparse';
+import { HTMLEditor } from './HTMLEditor';
 
 interface FilePreviewProps {
   file: {
@@ -82,43 +83,43 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
     const jsonFile = await fileDB.getFile(jsonId);
     if (!jsonFile) return;
     
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const jsonData = JSON.parse(reader.result as string);
-        const iframe = document.querySelector('iframe');
-        if (iframe && iframe.contentWindow) {
-          // Wait for iframe to load
-          await new Promise((resolve) => {
-            iframe.onload = resolve;
-            iframe.src = iframe.src;
-          });
-          
-          // Send data to iframe
-          iframe.contentWindow.postMessage({
-            type: 'jsonData',
-            payload: {
-              title: jsonFile.name,
-              data: jsonData
-            }
-          }, '*');
-          
-          toast({
-            title: 'Data Injected',
-            description: `${jsonFile.name} data has been sent to the page`
-          });
-        }
-      } catch (error) {
+    try {
+      const chunks: Uint8Array[] = [];
+      const reader = jsonFile.data.stream().pipeThrough(new DecompressionStream('gzip')).getReader();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+      
+      const blob = new Blob(chunks);
+      const text = await blob.text();
+      const jsonData = JSON.parse(text);
+
+      const iframe = document.querySelector('iframe');
+      if (iframe && iframe.contentWindow) {
+        // Send data to iframe
+        iframe.contentWindow.postMessage({
+          type: 'jsonData',
+          payload: {
+            title: jsonFile.name,
+            data: jsonData
+          }
+        }, '*');
+        
         toast({
-          title: 'Error',
-          description: 'Failed to parse JSON data',
-          variant: 'destructive'
+          title: 'Data Injected',
+          description: `${jsonFile.name} data has been sent to the page`
         });
       }
-    };
-    
-    const blob = await jsonFile.data.stream().pipeThrough(new DecompressionStream('gzip')).blob();
-    reader.readAsText(blob);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to process JSON data',
+        variant: 'destructive'
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -211,11 +212,8 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
       cleanupBlobUrl();
 
       try {
-        const compressedStream = file.data.stream();
-        const decompressedStream = compressedStream.pipeThrough(new DecompressionStream('gzip'));
-        const reader = decompressedStream.getReader();
-        
-        let chunks = [];
+        const chunks: Uint8Array[] = [];
+        const reader = file.data.stream().pipeThrough(new DecompressionStream('gzip')).getReader();
         let totalSize = 0;
         
         while (true) {
@@ -223,7 +221,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
           if (done) break;
           
           chunks.push(value);
-          totalSize += value.length;
+          totalSize += value.byteLength;
           setProgress(Math.round((totalSize / file.data.size) * 100));
         }
         
@@ -410,173 +408,126 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
                   </div>
                 ) : (
                   <div className="h-full flex flex-col">
-                    {file.type === 'text/html' && typeof content === 'string' && (
+                    {file.type === 'text/html' && (
                       <div className="flex-1 relative">
-                        <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setViewMode(v => v === 'code' ? 'preview' : 'code')}
-                            className="min-w-[100px]"
-                          >
+                        {isEditing ? (
+                          <HTMLEditor
+                            fileId={file.id}
+                            initialContent={content as string}
+                            onSave={handleSave}
+                            onCancel={() => {
+                              onEditingChange?.(false);
+                              setError(null);
+                            }}
+                          />
+                        ) : (
+                          <>
+                            <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setViewMode(v => v === 'code' ? 'preview' : 'code')}
+                                className="min-w-[100px]"
+                              >
+                                {viewMode === 'code' ? (
+                                  <><Eye className="h-4 w-4 mr-2" /> Preview</>
+                                ) : (
+                                  <><Code className="h-4 w-4 mr-2" /> Code</>
+                                )}
+                              </Button>
+
+                              {viewMode === 'preview' && (
+                                <Select 
+                                  value={selectedJson || ''} 
+                                  onValueChange={(value) => {
+                                    setSelectedJson(value);
+                                    if (value) injectJsonData(value);
+                                  }}
+                                >
+                                  <SelectTrigger className="w-[200px]">
+                                    <SelectValue placeholder="Select JSON data" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {jsonFiles.map((jsonFile) => (
+                                      <SelectItem key={jsonFile.id} value={jsonFile.id}>
+                                        {jsonFile.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            </div>
+
                             {viewMode === 'code' ? (
-                              <><Eye className="h-4 w-4 mr-2" /> Preview</>
-                            ) : (
-                              <><Code className="h-4 w-4 mr-2" /> Code</>
-                            )}
-                          </Button>
-
-                          {viewMode === 'preview' && (
-                            <Select 
-                              value={selectedJson || ''} 
-                              onValueChange={(value) => {
-                                setSelectedJson(value);
-                                if (value) injectJsonData(value);
-                              }}
-                            >
-                              <SelectTrigger className="w-[200px]">
-                                <SelectValue placeholder="Select JSON data" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {jsonFiles.map(file => (
-                                  <SelectItem key={file.id} value={file.id}>
-                                    {file.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-
-                          <div className="flex items-center gap-2 ml-4">
-                            <span className="text-sm text-muted-foreground">Safe</span>
-                            <Switch
-                              checked={htmlMode === 'raw'}
-                              onCheckedChange={(checked) => setHtmlMode(checked ? 'raw' : 'safe')}
-                            />
-                            <span className="text-sm text-muted-foreground">Raw</span>
-                          </div>
-                        </div>
-
-                        {viewMode === 'code' ? (
-                          <div className="h-full flex flex-col">
-                            {isEditing ? (
                               <Editor
                                 height="100%"
                                 defaultLanguage="html"
-                                defaultValue={content}
+                                value={content as string}
                                 theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                                onChange={(value) => {
-                                  setContent(value || '');
-                                  if (value) {
-                                    const validationResult = validateHTML(value);
-                                    if (validationResult.isValid) {
-                                      setSanitizedContent(sanitizeHTML(value));
-                                      setError(null);
-                                    } else {
-                                      setError(`Invalid HTML: ${validationResult.errors.join(', ')}`);
-                                    }
-                                  }
-                                }}
                                 options={{
+                                  readOnly: true,
                                   minimap: { enabled: false },
-                                  fontSize: 14,
-                                  lineNumbers: 'on',
-                                  roundedSelection: false,
                                   scrollBeyondLastLine: false,
-                                  automaticLayout: true,
-                                  formatOnPaste: true,
-                                  formatOnType: true
                                 }}
-                                className="flex-1"
                               />
                             ) : (
-                              <ScrollArea className="flex-1">
-                                <pre className="text-sm font-mono p-4">{content}</pre>
-                              </ScrollArea>
+                              <iframe
+                                srcDoc={sanitizedContent || undefined}
+                                className="w-full h-full rounded-lg"
+                                sandbox="allow-same-origin allow-scripts"
+                                title="HTML Preview"
+                              />
                             )}
-                          </div>
-                        ) : (
-                          <div className="h-full">
-                            <iframe
-                              srcDoc={htmlMode === 'safe' ? sanitizedContent : content}
-                              className="w-full h-full rounded-lg"
-                              sandbox="allow-same-origin"
-                              title="HTML Preview"
-                            />
-                          </div>
+                          </>
                         )}
                       </div>
                     )}
 
-                    {file.type === 'application/json' && typeof content === 'string' && (
-                      <div className="h-full flex flex-col">
-                        {isEditing ? (
-                          <Editor
-                            height="100%"
-                            defaultLanguage="json"
-                            defaultValue={content}
-                            theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                            onChange={(value) => {
-                              setContent(value || '');
-                              if (value) {
-                                try {
-                                  JSON.parse(value);
-                                  setError(null);
-                                } catch (err) {
-                                  setError('Invalid JSON format');
-                                }
-                              }
-                            }}
-                            options={{
-                              minimap: { enabled: false },
-                              fontSize: 14,
-                              lineNumbers: 'on',
-                              roundedSelection: false,
-                              scrollBeyondLastLine: false,
-                              automaticLayout: true,
-                              formatOnPaste: true,
-                              formatOnType: true
-                            }}
-                            className="flex-1"
-                          />
-                        ) : (
-                          <ScrollArea className="flex-1">
-                            <pre className="text-sm font-mono p-4">{content}</pre>
-                          </ScrollArea>
-                        )}
-                      </div>
-                    )}
-
-                    {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && (
-                      <VirtualizedList
-                        data={content}
-                        rowHeight={40}
-                        overscan={5}
-                        renderRow={({ index, style }) => (
-                          <div style={style} className="flex gap-2 py-1 border-b">
-                            {Object.values(content[index]).map((cell, i) => (
-                              <div key={i} className="flex-1 truncate">
-                                {typeof cell === 'object' ? JSON.stringify(cell) : String(cell)}
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                    {file.type === 'application/json' && (
+                      <Editor
+                        height="100%"
+                        defaultLanguage="json"
+                        value={content as string}
+                        theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                        options={{
+                          readOnly: !isEditing,
+                          minimap: { enabled: false },
+                          scrollBeyondLastLine: false,
+                        }}
+                        onChange={(value) => {
+                          if (isEditing) {
+                            setContent(value || '');
+                            try {
+                              JSON.parse(value || '');
+                              setError(null);
+                            } catch (err) {
+                              setError('Invalid JSON format');
+                            }
+                          }
+                        }}
                       />
                     )}
 
-                    {file.type.startsWith('image/') && content && (
-                      <div className="h-full flex items-center justify-center">
+                    {file.type === 'text/csv' || file.type === 'text/tab-separated-values' ? (
+                      <VirtualizedList
+                        data={content as any[]}
+                        rowHeight={24}
+                        overscan={5}
+                      />
+                    ) : file.type.startsWith('image/') ? (
+                      <div className="relative w-full h-full flex items-center justify-center bg-muted/30 rounded-lg overflow-hidden">
                         <img
-                          src={content}
+                          src={content as string}
                           alt={file.name}
                           className="max-w-full max-h-full object-contain"
-                          style={imageDimensions ? {
-                            maxWidth: imageDimensions.width,
-                            maxHeight: imageDimensions.height
-                          } : undefined}
                         />
+                        {imageDimensions && (
+                          <div className="absolute bottom-2 right-2 bg-background/90 backdrop-blur-sm text-xs px-2 py-1 rounded">
+                            {imageDimensions.width} × {imageDimensions.height}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </ErrorBoundary>
