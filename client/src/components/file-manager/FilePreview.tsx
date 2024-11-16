@@ -234,7 +234,9 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
                   
                   const save = () => {
                     const newName = input.value + extension;
-                    onRename(file.id, newName);
+                    if (onRename) {
+                      onRename(file.id, newName);
+                    }
                     const h2 = input.parentElement!;
                     h2.textContent = newName;
                   };

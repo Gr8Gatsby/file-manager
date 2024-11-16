@@ -91,37 +91,7 @@ export function FileGrid({ files, onDelete, onSelect, onRename }: FileGridProps)
                 </div>
               </CardHeader>
               <CardContent className="px-1.5 pb-1.5 pt-0">
-                <h3 
-                  className="font-medium text-xs truncate text-foreground cursor-text"
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    const fileName = file.name;
-                    const extension = fileName.substring(fileName.lastIndexOf('.'));
-                    const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
-                    
-                    // Create inline edit input
-                    const input = document.createElement('input');
-                    input.value = nameWithoutExt;
-                    input.className = 'w-full text-xs p-0.5 rounded border focus:outline-none focus:ring-1 focus:ring-primary';
-                    
-                    const save = () => {
-                      const newName = input.value + extension;
-                      onRename(file.id, newName);
-                      h3.replaceWith(nameElement);
-                    };
-                    
-                    input.onblur = save;
-                    input.onkeydown = (e) => {
-                      if (e.key === 'Enter') save();
-                      if (e.key === 'Escape') h3.replaceWith(nameElement);
-                    };
-                    
-                    const nameElement = e.currentTarget;
-                    const h3 = nameElement.parentElement!;
-                    h3.replaceWith(input);
-                    input.select();
-                  }}
-                >
+                <h3 className="font-medium text-xs truncate text-foreground">
                   {file.name}
                 </h3>
                 <div className="flex justify-between items-center mt-0.5">
