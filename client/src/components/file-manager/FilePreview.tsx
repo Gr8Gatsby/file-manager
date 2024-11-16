@@ -248,6 +248,11 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
     ? getHtmlWithInjectedData(htmlMode === 'raw' ? content : sanitizedContent || '', content)
     : null;
 
+  const canEdit = file && (
+    (file.type === 'text/html' && typeof content === 'string') ||
+    (file.type === 'application/json' && (typeof content === 'string' || content !== null))
+  );
+
   return (
     <AnimatePresence>
       <motion.div
@@ -261,7 +266,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             <div className="flex items-center justify-between p-3 border-b">
               <h2 className="text-lg font-semibold truncate flex-1 pr-4">{file.name}</h2>
               <div className="flex items-center gap-2">
-                {(file.type === 'text/html' || file.type === 'application/json') && typeof content === 'string' && (
+                {canEdit && (
                   <>
                     {isEditing && (
                       <Button
