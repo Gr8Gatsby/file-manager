@@ -1,12 +1,16 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, AlertCircle, Loader2, Eye, Code } from 'lucide-react';
+import { X, AlertCircle, Loader2, Eye, Code, Edit2, Save } from 'lucide-react';
+import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { VirtualizedList } from '@/components/ui/virtualized-list';
 import { validateHTML, sanitizeHTML } from '@/lib/html-utils';
 import { Switch } from '@/components/ui/switch';
+import { useTheme } from '@/hooks/use-theme';
+import { compressBlob } from '@/lib/compression';
+import { fileDB } from '@/lib/db';
 import Papa from 'papaparse';
 
 interface FilePreviewProps {
@@ -32,6 +36,7 @@ function ErrorBoundary({ children, onError }: { children: React.ReactNode; onErr
 }
 
 export function FilePreview({ file, onClose }: FilePreviewProps) {
+  const { theme } = useTheme();
   const [content, setContent] = useState<any[] | string | null>(null);
   const [sanitizedContent, setSanitizedContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +45,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [viewMode, setViewMode] = useState<'code' | 'preview'>('code');
   const [htmlMode, setHtmlMode] = useState<'safe' | 'raw'>('safe');
+  const [isEditing, setIsEditing] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
 
   const cleanupBlobUrl = useCallback(() => {
@@ -98,6 +104,36 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
 
     return htmlWithData;
   }, []);
+
+  const handleSave = async () => {
+    if (!file || typeof content !== 'string') return;
+    
+    try {
+      const validationResult = validateHTML(content);
+      if (!validationResult.isValid) {
+        setError(`Invalid HTML: ${validationResult.errors.join(', ')}`);
+        return;
+      }
+
+      const blob = new Blob([content], { type: 'text/html' });
+      const compressed = await compressBlob(blob);
+      
+      await fileDB.addFile({
+        id: file.id,
+        name: file.name,
+        type: file.type,
+        size: blob.size,
+        compressedSize: compressed.size,
+        data: compressed,
+        createdAt: new Date(),
+      });
+      
+      setIsEditing(false);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save file');
+    }
+  };
 
   useEffect(() => {
     const loadContent = async () => {
@@ -217,9 +253,38 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
           <div className="bg-background rounded-lg shadow-lg h-full flex flex-col">
             <div className="flex items-center justify-between p-3 border-b">
               <h2 className="text-lg font-semibold truncate flex-1 pr-4">{file.name}</h2>
-              <Button variant="ghost" size="icon" onClick={onClose}>
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                {file.type === 'text/html' && typeof content === 'string' && (
+                  <>
+                    {isEditing && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleSave}
+                        className="gap-2"
+                      >
+                        <Save className="h-4 w-4" />
+                        Save
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsEditing(!isEditing)}
+                      className="gap-2"
+                    >
+                      {isEditing ? (
+                        <><Eye className="h-4 w-4" /> Preview</>
+                      ) : (
+                        <><Edit2 className="h-4 w-4" /> Edit</>
+                      )}
+                    </Button>
+                  </>
+                )}
+                <Button variant="ghost" size="icon" onClick={onClose}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             
             <ScrollArea className="flex-1 p-3">
@@ -258,52 +323,72 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                   </div>
                 ) : (
                   <>
-                    {file.type === 'text/html' && htmlContent && (
+                    {file.type === 'text/html' && typeof content === 'string' && (
                       <div className="relative">
-                        <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setViewMode(v => v === 'code' ? 'preview' : 'code')}
-                            className="min-w-[100px]"
-                          >
-                            {viewMode === 'code' ? (
-                              <><Eye className="h-4 w-4 mr-2" /> Preview</>
-                            ) : (
-                              <><Code className="h-4 w-4 mr-2" /> Code</>
-                            )}
-                          </Button>
-
-                          <div className="flex items-center gap-2 ml-4">
-                            <span className="text-sm text-muted-foreground">Safe</span>
-                            <Switch
-                              checked={htmlMode === 'raw'}
-                              onCheckedChange={(checked) => setHtmlMode(checked ? 'raw' : 'safe')}
-                            />
-                            <span className="text-sm text-muted-foreground">Raw</span>
-                          </div>
-                        </div>
-
-                        {viewMode === 'preview' ? (
-                          <div className="relative w-full h-[calc(100vh-12rem)]">
-                            <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
-                              Previewing {htmlMode} HTML
-                            </div>
-                            <iframe
-                              srcDoc={htmlContent}
-                              className="w-full h-full rounded-lg border bg-white"
-                              sandbox={htmlMode === 'raw' ? 'allow-same-origin allow-scripts' : 'allow-same-origin'}
-                              title="HTML Preview"
-                            />
-                          </div>
+                        {isEditing ? (
+                          <Editor
+                            height="70vh"
+                            defaultLanguage="html"
+                            defaultValue={content}
+                            theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                            onChange={(value) => setContent(value || '')}
+                            options={{
+                              minimap: { enabled: false },
+                              fontSize: 14,
+                              lineNumbers: 'on',
+                              roundedSelection: false,
+                              scrollBeyondLastLine: false,
+                              automaticLayout: true
+                            }}
+                          />
                         ) : (
-                          <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                            {htmlContent?.split('\n').map((line, i) => (
-                              <div key={i} className="px-2 hover:bg-muted-foreground/5">
-                                {line}
+                          <>
+                            <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setViewMode(v => v === 'code' ? 'preview' : 'code')}
+                                className="min-w-[100px]"
+                              >
+                                {viewMode === 'code' ? (
+                                  <><Eye className="h-4 w-4 mr-2" /> Preview</>
+                                ) : (
+                                  <><Code className="h-4 w-4 mr-2" /> Code</>
+                                )}
+                              </Button>
+
+                              <div className="flex items-center gap-2 ml-4">
+                                <span className="text-sm text-muted-foreground">Safe</span>
+                                <Switch
+                                  checked={htmlMode === 'raw'}
+                                  onCheckedChange={(checked) => setHtmlMode(checked ? 'raw' : 'safe')}
+                                />
+                                <span className="text-sm text-muted-foreground">Raw</span>
                               </div>
-                            ))}
-                          </pre>
+                            </div>
+
+                            {viewMode === 'preview' ? (
+                              <div className="relative w-full h-[calc(100vh-12rem)]">
+                                <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
+                                  Previewing {htmlMode} HTML
+                                </div>
+                                <iframe
+                                  srcDoc={htmlContent}
+                                  className="w-full h-full rounded-lg border bg-white"
+                                  sandbox={htmlMode === 'raw' ? 'allow-same-origin allow-scripts' : 'allow-same-origin'}
+                                  title="HTML Preview"
+                                />
+                              </div>
+                            ) : (
+                              <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
+                                {htmlContent?.split('\n').map((line, i) => (
+                                  <div key={i} className="px-2 hover:bg-muted-foreground/5">
+                                    {line}
+                                  </div>
+                                ))}
+                              </pre>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
