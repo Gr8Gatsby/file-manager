@@ -50,7 +50,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
   const [htmlMode, setHtmlMode] = useState<'safe' | 'raw'>('safe');
   const [isRenaming, setIsRenaming] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
-  const fileNameRef = useRef<string>('');
+  const fileNameRef = useRef<HTMLHeadingElement>(null);
 
   const cleanupBlobUrl = useCallback(() => {
     if (blobUrlRef.current) {
@@ -100,6 +100,50 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
       setError(err instanceof Error ? err.message : 'Failed to save file');
     }
   };
+
+  const startRename = useCallback(() => {
+    if (!file || !onRename || isRenaming || !fileNameRef.current) return;
+    
+    const h2 = fileNameRef.current;
+    setIsRenaming(true);
+    
+    const fileName = file.name;
+    const extension = fileName.substring(fileName.lastIndexOf('.'));
+    const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
+    
+    const input = document.createElement('input');
+    input.value = nameWithoutExt;
+    input.className = 'text-lg font-semibold w-full p-1 rounded border focus:outline-none focus:ring-1 focus:ring-primary';
+    
+    const handleSave = () => {
+      if (!onRename) return;
+      const newName = input.value + extension;
+      if (newName !== fileName) {
+        onRename(file.id, newName);
+      }
+      setIsRenaming(false);
+      input.remove();
+      h2.textContent = fileName;
+    };
+    
+    input.onblur = handleSave;
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSave();
+      }
+      if (e.key === 'Escape') {
+        setIsRenaming(false);
+        input.remove();
+        h2.textContent = fileName;
+      }
+    };
+    
+    h2.textContent = '';
+    h2.appendChild(input);
+    input.focus();
+    input.select();
+  }, [file, onRename, isRenaming]);
 
   useEffect(() => {
     const loadContent = async () => {
@@ -171,7 +215,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
               if (results.errors.length > 0) {
                 console.warn('CSV parsing warnings:', results.errors);
               }
-              setContent(results.data.slice(0, 1000));
+              setContent(results.data);
               setIsLoading(false);
             },
             error: (error: Error) => {
@@ -202,58 +246,6 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
     loadContent();
   }, [file, cleanupBlobUrl]);
 
-  const handleRename = useCallback((input: HTMLInputElement) => {
-    if (!file || !onRename) return;
-    
-    const fileName = file.name;
-    const extension = fileName.substring(fileName.lastIndexOf('.'));
-    const newName = input.value + extension;
-    
-    if (newName !== fileName) {
-      onRename(file.id, newName);
-    }
-    setIsRenaming(false);
-  }, [file, onRename]);
-
-  const startRename = useCallback(() => {
-    if (!file || !onRename || isRenaming) return;
-    
-    const h2 = document.querySelector('[data-file-name]');
-    if (!h2) return;
-
-    setIsRenaming(true);
-    const fileName = file.name;
-    const extension = fileName.substring(fileName.lastIndexOf('.'));
-    const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
-    fileNameRef.current = fileName;
-
-    const input = document.createElement('input');
-    input.value = nameWithoutExt;
-    input.className = 'text-lg font-semibold w-full p-1 rounded border focus:outline-none focus:ring-1 focus:ring-primary';
-    
-    input.onblur = () => {
-      handleRename(input);
-      h2.textContent = fileNameRef.current;
-    };
-    
-    input.onkeydown = (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleRename(input);
-        h2.textContent = fileNameRef.current;
-      }
-      if (e.key === 'Escape') {
-        setIsRenaming(false);
-        h2.textContent = fileNameRef.current;
-      }
-    };
-    
-    h2.textContent = '';
-    h2.appendChild(input);
-    input.focus();
-    input.select();
-  }, [file, onRename, isRenaming, handleRename]);
-
   if (!file) return null;
 
   const canEdit = file && (
@@ -274,8 +266,10 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
             <div className="flex items-center justify-between p-3 border-b">
               <div className="flex items-center gap-2 flex-1 pr-4">
                 <h2 
+                  ref={fileNameRef}
                   data-file-name
-                  className="text-lg font-semibold truncate flex-1 cursor-text"
+                  className="text-lg font-semibold truncate flex-1 cursor-text select-none"
+                  onMouseDown={(e) => e.preventDefault()}
                   onDoubleClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -391,129 +385,123 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
                           </div>
                         </div>
 
-                        {isEditing ? (
+                        {viewMode === 'code' ? (
                           <div className="h-full flex flex-col">
-                            <Editor
-                              height="100%"
-                              defaultLanguage="html"
-                              defaultValue={content}
-                              theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                              onChange={(value) => {
-                                setContent(value || '');
-                                if (value) {
-                                  const validationResult = validateHTML(value);
-                                  if (validationResult.isValid) {
-                                    setSanitizedContent(sanitizeHTML(value));
-                                    setError(null);
-                                  } else {
-                                    setError(`Invalid HTML: ${validationResult.errors.join(', ')}`);
+                            {isEditing ? (
+                              <Editor
+                                height="100%"
+                                defaultLanguage="html"
+                                defaultValue={content}
+                                theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                                onChange={(value) => {
+                                  setContent(value || '');
+                                  if (value) {
+                                    const validationResult = validateHTML(value);
+                                    if (validationResult.isValid) {
+                                      setSanitizedContent(sanitizeHTML(value));
+                                      setError(null);
+                                    } else {
+                                      setError(`Invalid HTML: ${validationResult.errors.join(', ')}`);
+                                    }
                                   }
-                                }
-                              }}
-                              options={{
-                                minimap: { enabled: false },
-                                fontSize: 14,
-                                lineNumbers: 'on',
-                                roundedSelection: false,
-                                scrollBeyondLastLine: false,
-                                automaticLayout: true,
-                                formatOnPaste: true,
-                                formatOnType: true
-                              }}
-                              className="flex-1 absolute inset-0"
-                            />
-                          </div>
-                        ) : (
-                          <>
-                            {viewMode === 'preview' ? (
-                              <div className="relative w-full h-[calc(100vh-12rem)]">
-                                <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
-                                  Previewing {htmlMode} HTML
-                                </div>
-                                <iframe
-                                  srcDoc={htmlMode === 'raw' ? content : sanitizedContent || ''}
-                                  className="w-full h-full rounded-lg border bg-white"
-                                  sandbox={htmlMode === 'raw' ? 'allow-same-origin allow-scripts' : 'allow-same-origin'}
-                                  title="HTML Preview"
-                                />
-                              </div>
+                                }}
+                                options={{
+                                  minimap: { enabled: false },
+                                  fontSize: 14,
+                                  lineNumbers: 'on',
+                                  roundedSelection: false,
+                                  scrollBeyondLastLine: false,
+                                  automaticLayout: true,
+                                  formatOnPaste: true,
+                                  formatOnType: true
+                                }}
+                                className="flex-1"
+                              />
                             ) : (
-                              <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                                {(htmlMode === 'raw' ? content : sanitizedContent || '').split('\n').map((line, i) => (
-                                  <div key={i} className="px-2 hover:bg-muted-foreground/5">
-                                    {line}
-                                  </div>
-                                ))}
-                              </pre>
+                              <ScrollArea className="flex-1">
+                                <pre className="text-sm font-mono p-4">{content}</pre>
+                              </ScrollArea>
                             )}
-                          </>
-                        )}
-                      </div>
-                    )}
-
-                    {file.type === 'application/json' && (
-                      <div className="flex-1 relative">
-                        {isEditing ? (
-                          <div className="h-full flex flex-col">
-                            <Editor
-                              height="100%"
-                              defaultLanguage="json"
-                              defaultValue={content}
-                              theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                              onChange={(value) => setContent(value || '')}
-                              options={{
-                                minimap: { enabled: false },
-                                fontSize: 14,
-                                lineNumbers: 'on',
-                                roundedSelection: false,
-                                scrollBeyondLastLine: false,
-                                automaticLayout: true,
-                                formatOnPaste: true,
-                                formatOnType: true
-                              }}
-                              className="flex-1 absolute inset-0"
-                            />
                           </div>
                         ) : (
-                          <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                            {content}
-                          </pre>
+                          <div className="h-full">
+                            <iframe
+                              srcDoc={htmlMode === 'safe' ? sanitizedContent : content}
+                              className="w-full h-full rounded-lg"
+                              sandbox="allow-same-origin"
+                              title="HTML Preview"
+                            />
+                          </div>
                         )}
                       </div>
                     )}
 
-                    {file.type.startsWith('image/') && content && (
-                      <div className="flex flex-col items-center justify-center h-full">
-                        <div className="relative max-w-full max-h-full">
-                          <img
-                            src={content}
-                            alt={file.name}
-                            className="rounded-lg shadow-lg object-contain max-h-[calc(100vh-12rem)]"
+                    {file.type === 'application/json' && typeof content === 'string' && (
+                      <div className="h-full flex flex-col">
+                        {isEditing ? (
+                          <Editor
+                            height="100%"
+                            defaultLanguage="json"
+                            defaultValue={content}
+                            theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                            onChange={(value) => {
+                              setContent(value || '');
+                              if (value) {
+                                try {
+                                  JSON.parse(value);
+                                  setError(null);
+                                } catch (err) {
+                                  setError('Invalid JSON format');
+                                }
+                              }
+                            }}
+                            options={{
+                              minimap: { enabled: false },
+                              fontSize: 14,
+                              lineNumbers: 'on',
+                              roundedSelection: false,
+                              scrollBeyondLastLine: false,
+                              automaticLayout: true,
+                              formatOnPaste: true,
+                              formatOnType: true
+                            }}
+                            className="flex-1"
                           />
-                          {imageDimensions && (
-                            <div className="absolute bottom-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
-                              {imageDimensions.width} × {imageDimensions.height}
-                            </div>
-                          )}
-                        </div>
+                        ) : (
+                          <ScrollArea className="flex-1">
+                            <pre className="text-sm font-mono p-4">{content}</pre>
+                          </ScrollArea>
+                        )}
                       </div>
                     )}
 
                     {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && (
-                      <div className="h-full">
-                        <VirtualizedList
-                          data={content}
-                          rowHeight={40}
-                          overscan={5}
-                          renderRow={({ index, style }) => (
-                            <div style={style} className="flex gap-2 py-1 border-b">
-                              {Object.values(content[index]).map((cell, i) => (
-                                <div key={i} className="flex-1 truncate">
-                                  {typeof cell === 'object' ? JSON.stringify(cell) : String(cell)}
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                      <VirtualizedList
+                        data={content}
+                        rowHeight={40}
+                        overscan={5}
+                        renderRow={({ index, style }) => (
+                          <div style={style} className="flex gap-2 py-1 border-b">
+                            {Object.values(content[index]).map((cell, i) => (
+                              <div key={i} className="flex-1 truncate">
+                                {typeof cell === 'object' ? JSON.stringify(cell) : String(cell)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      />
+                    )}
+
+                    {file.type.startsWith('image/') && content && (
+                      <div className="h-full flex items-center justify-center">
+                        <img
+                          src={content}
+                          alt={file.name}
+                          className="max-w-full max-h-full object-contain"
+                          style={imageDimensions ? {
+                            maxWidth: imageDimensions.width,
+                            maxHeight: imageDimensions.height
+                          } : undefined}
                         />
                       </div>
                     )}
