@@ -33,7 +33,11 @@ export function RenameDialog({ open, onOpenChange, initialName, onRename }: Rena
           autoFocus
         />
         <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button 
+            variant="secondary"
+            onClick={() => onOpenChange(false)}
+            className="bg-muted hover:bg-muted/80"
+          >
             Cancel
           </Button>
           <Button onClick={() => {
