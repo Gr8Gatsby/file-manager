@@ -28,6 +28,19 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   const [isValidating, setIsValidating] = useState(false);
   const [associatedData, setAssociatedData] = useState<Array<{ name: string; data: any }>>([]);
 
+  useEffect(() => {
+    // Suppress ResizeObserver warnings
+    const resizeObserverError = console.error;
+    console.error = (...args: any) => {
+      if (args[0]?.includes?.('ResizeObserver')) return;
+      resizeObserverError(...args);
+    };
+    
+    return () => {
+      console.error = resizeObserverError;
+    };
+  }, []);
+
   const { register, handleSubmit, watch } = useForm<FormData>({
     defaultValues: {
       content: initialContent || `<!DOCTYPE html>
