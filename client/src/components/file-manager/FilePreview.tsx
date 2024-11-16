@@ -62,57 +62,12 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
     };
   }, [cleanupBlobUrl]);
 
-  const getHtmlWithInjectedData = useCallback((htmlContent: string, rawContent: any) => {
-    const injectData = {
-      data: rawContent,
-      __isSecureContext: true
-    };
-
-    const htmlWithData = `
-      ${htmlContent}
-      <script>
-        window.__INJECTED_DATA__ = ${JSON.stringify(injectData)};
-        
-        // Example usage documentation
-        /*
-          This HTML file can access injected JSON data through window.__INJECTED_DATA__.data
-          
-          Example usage:
-          document.addEventListener('DOMContentLoaded', () => {
-            const data = window.__INJECTED_DATA__.data;
-            
-            if (data) {
-              // Example: Create a list from JSON array
-              if (Array.isArray(data)) {
-                const list = document.createElement('ul');
-                data.forEach(item => {
-                  const li = document.createElement('li');
-                  li.textContent = JSON.stringify(item);
-                  list.appendChild(li);
-                });
-                document.body.appendChild(list);
-              }
-              
-              // Example: Display JSON object
-              const pre = document.createElement('pre');
-              pre.textContent = JSON.stringify(data, null, 2);
-              document.body.appendChild(pre);
-            }
-          });
-        */
-      </script>
-    `;
-
-    return htmlWithData;
-  }, []);
-
   const handleSave = async () => {
     if (!file || typeof content !== 'string') return;
     
     try {
       let finalContent = content;
       if (file.type === 'application/json') {
-        // Validate and format JSON before saving
         const parsed = JSON.parse(content);
         finalContent = JSON.stringify(parsed, null, 2);
       } else if (file.type === 'text/html') {
@@ -136,7 +91,6 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
         createdAt: new Date(),
       });
       
-      setIsEditing(false);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save file');
@@ -246,7 +200,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
   if (!file) return null;
 
   const htmlContent = file.type === 'text/html' && typeof content === 'string' 
-    ? getHtmlWithInjectedData(htmlMode === 'raw' ? content : sanitizedContent || '', content)
+    ? sanitizedContent 
     : null;
 
   const canEdit = file && (
@@ -269,7 +223,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
               <div className="flex items-center gap-2">
                 {canEdit && (
                   <>
-                    {isEditing && (
+                    {isEditing ? (
                       <Button
                         variant="default"
                         size="sm"
@@ -280,19 +234,16 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                         <Save className="h-4 w-4" />
                         Save
                       </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onEditingChange?.(!isEditing)}
+                        className="gap-2"
+                      >
+                        <Edit2 className="h-4 w-4" /> Edit
+                      </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onEditingChange?.(!isEditing)}
-                      className="gap-2"
-                    >
-                      {isEditing ? (
-                        <><Eye className="h-4 w-4" /> Preview</>
-                      ) : (
-                        <><Edit2 className="h-4 w-4" /> Edit</>
-                      )}
-                    </Button>
                   </>
                 )}
                 <Button variant="ghost" size="icon" onClick={onClose}>
@@ -301,7 +252,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
               </div>
             </div>
             
-            <ScrollArea className="flex-1 p-3">
+            <div className="flex-1 min-h-0 p-3">
               <ErrorBoundary onError={(error) => setError(error.message)}>
                 {error ? (
                   <Alert variant="destructive" className="mx-auto max-w-md">
@@ -336,28 +287,44 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                     )}
                   </div>
                 ) : (
-                  <>
+                  <div className="h-full flex flex-col">
                     {file.type === 'text/html' && typeof content === 'string' && (
-                      <div className="relative">
+                      <div className="flex-1 relative">
                         {isEditing ? (
-                          <Editor
-                            height="100%"
-                            defaultLanguage="html"
-                            defaultValue={content}
-                            theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                            onChange={(value) => setContent(value || '')}
-                            options={{
-                              minimap: { enabled: false },
-                              fontSize: 14,
-                              lineNumbers: 'on',
-                              roundedSelection: false,
-                              scrollBeyondLastLine: false,
-                              automaticLayout: true,
-                              formatOnPaste: true,
-                              formatOnType: true
-                            }}
-                            className="min-h-[70vh]"
-                          />
+                          <div className="h-full flex flex-col">
+                            <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setViewMode(v => v === 'code' ? 'preview' : 'code')}
+                                className="min-w-[100px]"
+                              >
+                                {viewMode === 'code' ? (
+                                  <><Eye className="h-4 w-4 mr-2" /> Preview</>
+                                ) : (
+                                  <><Code className="h-4 w-4 mr-2" /> Code</>
+                                )}
+                              </Button>
+                            </div>
+                            <Editor
+                              height="100%"
+                              defaultLanguage="html"
+                              defaultValue={content}
+                              theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                              onChange={(value) => setContent(value || '')}
+                              options={{
+                                minimap: { enabled: false },
+                                fontSize: 14,
+                                lineNumbers: 'on',
+                                roundedSelection: false,
+                                scrollBeyondLastLine: false,
+                                automaticLayout: true,
+                                formatOnPaste: true,
+                                formatOnType: true
+                              }}
+                              className="flex-1 absolute inset-0"
+                            />
+                          </div>
                         ) : (
                           <>
                             <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
@@ -373,32 +340,20 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                                   <><Code className="h-4 w-4 mr-2" /> Code</>
                                 )}
                               </Button>
-
-                              <div className="flex items-center gap-2 ml-4">
-                                <span className="text-sm text-muted-foreground">Safe</span>
-                                <Switch
-                                  checked={htmlMode === 'raw'}
-                                  onCheckedChange={(checked) => setHtmlMode(checked ? 'raw' : 'safe')}
-                                />
-                                <span className="text-sm text-muted-foreground">Raw</span>
-                              </div>
                             </div>
 
                             {viewMode === 'preview' ? (
                               <div className="relative w-full h-[calc(100vh-12rem)]">
-                                <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
-                                  Previewing {htmlMode} HTML
-                                </div>
                                 <iframe
-                                  srcDoc={htmlContent}
+                                  srcDoc={htmlContent || ''}
                                   className="w-full h-full rounded-lg border bg-white"
-                                  sandbox={htmlMode === 'raw' ? 'allow-same-origin allow-scripts' : 'allow-same-origin'}
+                                  sandbox="allow-same-origin"
                                   title="HTML Preview"
                                 />
                               </div>
                             ) : (
                               <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                                {(file.type === 'text/html' ? formatHTML(content) : content).split('\n').map((line, i) => (
+                                {formatHTML(content).split('\n').map((line, i) => (
                                   <div key={i} className="px-2 hover:bg-muted-foreground/5">
                                     {line}
                                   </div>
@@ -409,57 +364,49 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                         )}
                       </div>
                     )}
-                    
-                    {file.type.startsWith('image/') && typeof content === 'string' && (
-                      <div className="relative flex justify-center">
+
+                    {file.type === 'application/json' && (
+                      <div className="flex-1 relative">
+                        {isEditing ? (
+                          <div className="h-full flex flex-col">
+                            <Editor
+                              height="100%"
+                              defaultLanguage="json"
+                              defaultValue={typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
+                              theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                              onChange={(value) => setContent(value || '')}
+                              options={{
+                                minimap: { enabled: false },
+                                fontSize: 14,
+                                lineNumbers: 'on',
+                                roundedSelection: false,
+                                scrollBeyondLastLine: false,
+                                automaticLayout: true,
+                                formatOnPaste: true,
+                                formatOnType: true
+                              }}
+                              className="flex-1 absolute inset-0"
+                            />
+                          </div>
+                        ) : (
+                          <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
+                            {JSON.stringify(content, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+
+                    {file.type.startsWith('image/') && content && (
+                      <div className="relative">
                         <img
                           src={content}
                           alt={file.name}
-                          className="max-w-full max-h-[80vh] object-contain rounded-lg"
-                          style={{
-                            width: imageDimensions?.width ? `${imageDimensions.width}px` : 'auto',
-                            height: imageDimensions?.height ? `${imageDimensions.height}px` : 'auto'
-                          }}
+                          className="max-w-full h-auto rounded-lg mx-auto"
                         />
-                      </div>
-                    )}
-                    
-                    {file.type === 'application/json' && (
-                      <div className="relative">
-                        {isEditing ? (
-                          <Editor
-                            height="100%"
-                            defaultLanguage="json"
-                            defaultValue={typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
-                            theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                            onChange={(value) => {
-                              try {
-                                // Validate JSON as user types
-                                if (value) {
-                                  JSON.parse(value);
-                                  setError(null);
-                                }
-                                setContent(value || '');
-                              } catch (err) {
-                                setError('Invalid JSON format');
-                              }
-                            }}
-                            options={{
-                              minimap: { enabled: false },
-                              fontSize: 14,
-                              lineNumbers: 'on',
-                              roundedSelection: false,
-                              scrollBeyondLastLine: false,
-                              automaticLayout: true,
-                              formatOnPaste: true,
-                              formatOnType: true
-                            }}
-                            className="min-h-[70vh]"
-                          />
-                        ) : (
-                          <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                            {typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
-                          </pre>
+                        {imageDimensions && (
+                          <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
+                            {imageDimensions.width} × {imageDimensions.height}
+                          </div>
                         )}
                       </div>
                     )}
@@ -470,7 +417,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                         rowHeight={40}
                         overscan={5}
                         renderRow={({ index, style }) => (
-                          <div key={index} style={style} className="flex gap-2 py-1 border-b">
+                          <div style={style} className="flex gap-2 py-1 border-b">
                             {Object.values(content[index]).map((cell, i) => (
                               <div key={i} className="flex-1 truncate">
                                 {typeof cell === 'object' ? JSON.stringify(cell) : String(cell)}
@@ -480,10 +427,10 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                         )}
                       />
                     )}
-                  </>
+                  </div>
                 )}
               </ErrorBoundary>
-            </ScrollArea>
+            </div>
           </div>
         </div>
       </motion.div>
