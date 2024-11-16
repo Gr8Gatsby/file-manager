@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { Loader2, Check } from 'lucide-react';
+import { Loader2, Check, AlertCircle } from 'lucide-react';
 import { validateHTML, sanitizeHTML } from '@/lib/html-utils';
+import { SchemaValidator } from '@/lib/schema-validator';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -9,6 +10,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/componen
 import { JsonAssociationManager } from './JsonAssociationManager';
 import { fileDB } from '@/lib/db';
 import { useToast } from '@/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
 
 interface HTMLEditorProps {
   fileId: string;
@@ -28,6 +30,7 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   const [isValidating, setIsValidating] = useState(false);
   const [associatedData, setAssociatedData] = useState<Array<{ name: string; data: any }>>([]);
   const [lastInjection, setLastInjection] = useState<{ name: string; timestamp: number } | null>(null);
+  const [validationResults, setValidationResults] = useState<Map<string, { isValid: boolean; errors: string[] }>>(new Map());
 
   useEffect(() => {
     // Suppress ResizeObserver warnings
@@ -48,6 +51,16 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
 <html>
 <head>
   <title>New Document</title>
+  <script type="application/schema">
+  {
+    "name": z.string(),
+    "description": z.string().optional(),
+    "data": z.array(z.object({
+      "id": z.number(),
+      "value": z.string()
+    }))
+  }
+  </script>
   <style>
     .json-data-indicator {
       position: fixed;
@@ -89,10 +102,28 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
       background: #22c55e;
       margin-right: 4px;
     }
+    .validation-status {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 1000;
+    }
+    .validation-error {
+      color: #ef4444;
+    }
+    .validation-success {
+      color: #22c55e;
+    }
   </style>
 </head>
 <body>
   <h1>Hello World</h1>
+  <div id="data-container"></div>
   <script>
     // Store all JSON data in a global object
     window.jsonDataStore = {};
@@ -156,6 +187,27 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
         }
       }, '*');
     });
+
+    // Add schema validation status display
+    window.addEventListener('jsonDataReceived', function(event) {
+      const { source, data, isValid, validationErrors } = event.detail;
+      
+      let statusContainer = document.querySelector('.validation-status');
+      if (!statusContainer) {
+        statusContainer = document.createElement('div');
+        statusContainer.className = 'validation-status';
+        document.body.appendChild(statusContainer);
+      }
+
+      const statusHtml = \`
+        <div class="\${isValid ? 'validation-success' : 'validation-error'}">
+          \${source}: \${isValid ? '✓ Valid' : '✗ Invalid'}
+          \${!isValid ? '<ul>' + validationErrors.map(err => '<li>' + err + '</li>').join('') + '</ul>' : ''}
+        </div>
+      \`;
+      
+      statusContainer.innerHTML = statusHtml;
+    });
   </script>
 </body>
 </html>`
@@ -163,6 +215,10 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   });
 
   const content = watch('content');
+
+  const validateJsonData = async (jsonData: any, htmlContent: string) => {
+    return SchemaValidator.validateJsonWithHTML(jsonData, htmlContent);
+  };
 
   const loadAssociatedData = async () => {
     const associated = await fileDB.getAssociatedFiles(fileId);
@@ -179,14 +235,30 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
       
       const blob = new Blob(chunks);
       const text = await blob.text();
-      return {
-        name: file.name,
-        data: JSON.parse(text)
-      };
+      
+      try {
+        const data = JSON.parse(text);
+        const validationResult = await validateJsonData(data, content);
+        
+        setValidationResults(prev => new Map(prev).set(file.name, {
+          isValid: validationResult.isValid,
+          errors: validationResult.errors
+        }));
+
+        return {
+          name: file.name,
+          data,
+          isValid: validationResult.isValid,
+          validationErrors: validationResult.errors
+        };
+      } catch (error) {
+        console.error('Error parsing JSON:', error);
+        return null;
+      }
     });
     
     const data = await Promise.all(dataPromises);
-    setAssociatedData(data.filter((d): d is { name: string; data: any } => d !== null));
+    setAssociatedData(data.filter((d): d is { name: string; data: any; isValid: boolean; validationErrors: string[] } => d !== null));
   };
 
   useEffect(() => {
@@ -212,9 +284,11 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'previewUpdated') {
         const { dataCount } = event.data.payload;
+        const validCount = Array.from(validationResults.values()).filter(r => r.isValid).length;
+        
         toast({
           title: 'Preview Updated',
-          description: `${dataCount} JSON data source${dataCount !== 1 ? 's' : ''} active`,
+          description: `${dataCount} JSON data source${dataCount !== 1 ? 's' : ''} active (${validCount} valid)`,
           duration: 2000
         });
       }
@@ -222,7 +296,7 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [fileId, toast]);
+  }, [fileId, toast, validationResults]);
 
   const onSubmit = (data: FormData) => {
     const result = validateHTML(data.content);
@@ -242,17 +316,43 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
       <div className="bg-muted/50 p-4 rounded-lg">
         <h3 className="text-sm font-medium mb-2 flex items-center justify-between">
           <span>Associated JSON Data Files</span>
-          {lastInjection && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <Check className="h-3 w-3 text-green-500" />
-              Last updated: {lastInjection.name}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {lastInjection && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Check className="h-3 w-3 text-green-500" />
+                Last updated: {lastInjection.name}
+              </span>
+            )}
+            {validationResults.size > 0 && (
+              <Badge variant={
+                Array.from(validationResults.values()).every(r => r.isValid)
+                  ? "success"
+                  : "destructive"
+              }>
+                {Array.from(validationResults.values()).filter(r => r.isValid).length}/{validationResults.size} Valid
+              </Badge>
+            )}
+          </div>
         </h3>
         <JsonAssociationManager 
           htmlFileId={fileId} 
           onAssociationChange={handleAssociationChange}
         />
+        {Array.from(validationResults.entries()).map(([name, result]) => (
+          !result.isValid && (
+            <Alert variant="destructive" className="mt-2" key={name}>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <p className="font-medium">{name}: Validation Failed</p>
+                <ul className="list-disc pl-4 mt-1">
+                  {result.errors.map((error, index) => (
+                    <li key={index} className="text-sm">{error}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )
+        ))}
       </div>
 
       <ResizablePanelGroup direction="horizontal">
@@ -298,7 +398,9 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                       type: 'jsonData',
                       payload: {
                         title: data.name,
-                        data: data.data
+                        data: data.data,
+                        isValid: data.isValid,
+                        validationErrors: data.validationErrors
                       }
                     };
                     iframe.contentWindow?.postMessage(message, '*');
@@ -323,7 +425,10 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={errors.length > 0}>
+        <Button 
+          type="submit" 
+          disabled={errors.length > 0 || Array.from(validationResults.values()).some(r => !r.isValid)}
+        >
           Save
         </Button>
       </div>
