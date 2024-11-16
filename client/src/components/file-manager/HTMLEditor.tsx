@@ -1,17 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
 import { Loader2, Check, AlertCircle } from 'lucide-react';
 import { validateHTML, sanitizeHTML } from '@/lib/html-utils';
 import { SchemaValidator } from '@/lib/schema-validator';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { JsonAssociationManager } from './JsonAssociationManager';
 import { fileDB } from '@/lib/db';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
-// import { JsonDataMapper, DataMapping } from './JsonDataMapper';  // Removed as per intention
 
 interface HTMLEditorProps {
   fileId: string;
@@ -32,125 +28,6 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   const [associatedData, setAssociatedData] = useState<Array<{ name: string; data: any }>>([]);
   const [lastInjection, setLastInjection] = useState<{ name: string; timestamp: number } | null>(null);
   const [validationResults, setValidationResults] = useState<Map<string, { isValid: boolean; errors: string[] }>>(new Map());
-
-  useEffect(() => {
-    // Suppress ResizeObserver warnings
-    const resizeObserverError = console.error;
-    console.error = (...args: any) => {
-      if (args[0]?.includes?.('ResizeObserver')) return;
-      resizeObserverError(...args);
-    };
-    
-    return () => {
-      console.error = resizeObserverError;
-    };
-  }, []);
-
-  const { register, handleSubmit, watch } = useForm<FormData>({
-    defaultValues: {
-      content: initialContent || `<!DOCTYPE html>
-<html>
-<head>
-  <title>New Document</title>
-  <script type="application/schema">
-  {
-    "name": z.string(),
-    "description": z.string().optional(),
-    "data": z.array(z.object({
-      "id": z.number(),
-      "value": z.string()
-    }))
-  }
-  </script>
-  <style>
-    .json-data-indicator {
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      background: rgba(0, 0, 0, 0.8);
-      color: white;
-      padding: 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      z-index: 1000;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-    .json-data-item {
-      padding: 4px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    .json-data-item:last-child {
-      border-bottom: none;
-    }
-    .json-data-item.updated {
-      animation: highlight 1s ease-out;
-    }
-    @keyframes highlight {
-      0% { background: rgba(59, 130, 246, 0.5); }
-      100% { background: transparent; }
-    }
-    .validation-status {
-      position: fixed;
-      bottom: 10px;
-      left: 10px;
-      background: rgba(0, 0, 0, 0.8);
-      color: white;
-      padding: 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      z-index: 1000;
-    }
-    .validation-error {
-      color: #ef4444;
-    }
-    .validation-success {
-      color: #22c55e;
-    }
-    .data-updated {
-      animation: highlight 1s ease-out;
-    }
-  </style>
-</head>
-<body>
-  <h1>Hello World</h1>
-  <div id="data-container"></div>
-  <script>
-    window.addEventListener('message', function(event) {
-      if (event.data.type === 'jsonData') {
-        const { title, data } = event.data.payload;
-        
-        // Update indicator
-        let indicator = document.querySelector('.json-data-indicator');
-        if (!indicator) {
-          indicator = document.createElement('div');
-          indicator.className = 'json-data-indicator';
-          document.body.appendChild(indicator);
-        }
-
-        const dataItem = document.createElement('div');
-        dataItem.className = 'json-data-item updated';
-        dataItem.textContent = title;
-        
-        indicator.innerHTML = '';
-        indicator.appendChild(dataItem);
-        
-        // Dispatch event for any external handlers
-        window.dispatchEvent(new CustomEvent('jsonDataReceived', {
-          detail: { source: title, data }
-        }));
-      }
-    });
-  </script>
-</body>
-</html>`
-    }
-  });
-
-  const content = watch('content');
 
   const validateJsonData = async (jsonData: any, htmlContent: string) => {
     return SchemaValidator.validateJsonWithHTML(jsonData, htmlContent);
@@ -174,7 +51,7 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
       
       try {
         const data = JSON.parse(text);
-        const validationResult = await validateJsonData(data, content);
+        const validationResult = await validateJsonData(data, preview);
         
         setValidationResults(prev => new Map(prev).set(file.name, {
           isValid: validationResult.isValid,
@@ -200,46 +77,22 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   useEffect(() => {
     const validateContent = async () => {
       setIsValidating(true);
-      const result = validateHTML(content);
+      const result = validateHTML(initialContent);
       setErrors(result.errors);
       
       if (result.isValid) {
-        const sanitized = sanitizeHTML(content);
+        const sanitized = sanitizeHTML(initialContent);
         setPreview(sanitized);
       }
       setIsValidating(false);
     };
 
     validateContent();
-  }, [content]);
+  }, [initialContent]);
 
   useEffect(() => {
     loadAssociatedData();
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'previewUpdated') {
-        const { dataCount } = event.data.payload;
-        const validCount = Array.from(validationResults.values()).filter(r => r.isValid).length;
-        
-        toast({
-          title: 'Preview Updated',
-          description: `${dataCount} JSON data source${dataCount !== 1 ? 's' : ''} active (${validCount} valid)`,
-          duration: 2000
-        });
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [fileId, toast, validationResults]);
-
-  const onSubmit = (data: FormData) => {
-    const result = validateHTML(data.content);
-    if (result.isValid) {
-      const sanitized = sanitizeHTML(data.content);
-      onSave(sanitized);
-    }
-  };
+  }, [fileId, preview]);
 
   const handleAssociationChange = () => {
     loadAssociatedData();
@@ -247,7 +100,7 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="h-[80vh] flex flex-col gap-4">
+    <div className="h-[80vh] flex flex-col gap-4">
       <div className="bg-muted/50 p-4 rounded-lg">
         <h3 className="text-sm font-medium mb-2 flex items-center justify-between">
           <span>Associated JSON Data Files</span>
@@ -290,77 +143,60 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
         ))}
       </div>
 
-      <ResizablePanelGroup direction="horizontal" className="h-full">
-        <ResizablePanel defaultSize={50}>
-          <div className="h-full flex flex-col overflow-hidden">
-            <Textarea
-              {...register('content')}
-              className="flex-1 font-mono text-sm h-full overflow-y-auto resize-none"
-              placeholder="Enter HTML content..."
-            />
-            {/* Removed JsonDataMapper as per intention */}
+      <div className="flex-1 border rounded-lg bg-background">
+        {isValidating ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-6 w-6 animate-spin" />
           </div>
-        </ResizablePanel>
-        
-        <ResizableHandle withHandle />
-        
-        <ResizablePanel defaultSize={50}>
-          <div className="h-full border rounded-lg bg-background">
-            {isValidating ? (
-              <div className="flex items-center justify-center h-full">
-                <Loader2 className="h-6 w-6 animate-spin" />
-              </div>
-            ) : errors.length > 0 ? (
-              <Alert variant="destructive" className="m-4">
-                <AlertDescription>
-                  <ul className="list-disc pl-4">
-                    {errors.map((error, index) => (
-                      <li key={index}>{error}</li>
-                    ))}
-                  </ul>
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <iframe
-                srcDoc={preview || undefined}
-                className="w-full h-full rounded-lg"
-                sandbox="allow-same-origin allow-scripts"
-                title="HTML Preview"
-                onLoad={(e) => {
-                  const iframe = e.currentTarget;
-                  associatedData.forEach(data => {
-                    const message = {
-                      type: 'jsonData',
-                      payload: {
-                        title: data.name,
-                        data: data.data
-                      }
-                    };
-                    iframe.contentWindow?.postMessage(message, '*');
-                    
-                    setLastInjection({ name: data.name, timestamp: Date.now() });
-                    
-                    toast({
-                      title: 'Data Injected',
-                      description: `${data.name} data has been injected`,
-                      duration: 3000
-                    });
-                  });
-                }}
-              />
-            )}
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        ) : errors.length > 0 ? (
+          <Alert variant="destructive" className="m-4">
+            <AlertDescription>
+              <ul className="list-disc pl-4">
+                {errors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <iframe
+            srcDoc={preview}
+            className="w-full h-full rounded-lg"
+            sandbox="allow-same-origin allow-scripts"
+            title="HTML Preview"
+            onLoad={(e) => {
+              const iframe = e.currentTarget;
+              associatedData.forEach(data => {
+                const message = {
+                  type: 'jsonData',
+                  payload: {
+                    title: data.name,
+                    data: data.data
+                  }
+                };
+                iframe.contentWindow?.postMessage(message, '*');
+                
+                setLastInjection({ name: data.name, timestamp: Date.now() });
+                
+                toast({
+                  title: 'Data Injected',
+                  description: `${data.name} data has been injected`,
+                  duration: 3000
+                });
+              });
+            }}
+          />
+        )}
+      </div>
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={errors.length > 0}>
+        <Button onClick={() => onSave(preview)} disabled={errors.length > 0}>
           Save Changes
         </Button>
       </div>
-    </form>
+    </div>
   );
 }
