@@ -43,33 +43,61 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
       border-radius: 4px;
       font-size: 12px;
       z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .json-data-item {
+      padding: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .json-data-item:last-child {
+      border-bottom: none;
     }
   </style>
 </head>
 <body>
   <h1>Hello World</h1>
   <script>
+    // Store all JSON data in a global object
+    window.jsonDataStore = {};
+
     window.addEventListener('message', function(event) {
       if (event.data.type === 'jsonData') {
-        // Create or update data indicator
+        // Store the data
+        window.jsonDataStore[event.data.payload.title] = event.data.payload.data;
+        
+        // Update or create data indicator
         let indicator = document.querySelector('.json-data-indicator');
         if (!indicator) {
           indicator = document.createElement('div');
           indicator.className = 'json-data-indicator';
           document.body.appendChild(indicator);
         }
-        indicator.textContent = 'Data from: ' + event.data.payload.title;
+
+        // Update indicator content
+        indicator.innerHTML = Object.keys(window.jsonDataStore)
+          .map(key => \`<div class="json-data-item">Data from: \${key}</div>\`)
+          .join('');
         
-        // Make data available globally
-        window[event.data.payload.title] = event.data.payload.data;
-        
-        // Dispatch custom event
+        // Dispatch custom event for each data update
         const dataEvent = new CustomEvent('jsonDataReceived', {
-          detail: event.data.payload
+          detail: {
+            source: event.data.payload.title,
+            data: event.data.payload.data,
+            allData: window.jsonDataStore
+          }
         });
         window.dispatchEvent(dataEvent);
       }
     });
+
+    // Helper function to access data from any JSON file
+    window.getJsonData = function(fileName) {
+      return window.jsonDataStore[fileName];
+    };
   </script>
 </body>
 </html>`
@@ -138,7 +166,7 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="h-[80vh] flex flex-col gap-4">
       <div className="bg-muted/50 p-4 rounded-lg">
-        <h3 className="text-sm font-medium mb-2">Associated JSON Data</h3>
+        <h3 className="text-sm font-medium mb-2">Associated JSON Data Files</h3>
         <JsonAssociationManager 
           htmlFileId={fileId} 
           onAssociationChange={handleAssociationChange}
@@ -181,7 +209,7 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                 sandbox="allow-same-origin allow-scripts"
                 title="HTML Preview"
                 onLoad={(e) => {
-                  // Inject associated data
+                  // Inject all associated data
                   const iframe = e.currentTarget;
                   associatedData.forEach(data => {
                     iframe.contentWindow?.postMessage({
