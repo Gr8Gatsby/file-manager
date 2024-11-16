@@ -227,7 +227,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
                   const extension = fileName.substring(fileName.lastIndexOf('.'));
                   const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
                   
-                  // Create inline edit input
+                  const h2 = e.currentTarget;
                   const input = document.createElement('input');
                   input.value = nameWithoutExt;
                   input.className = 'text-lg font-semibold w-full p-1 rounded border focus:outline-none focus:ring-1 focus:ring-primary';
@@ -237,22 +237,25 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
                     if (onRename) {
                       onRename(file.id, newName);
                     }
-                    const h2 = input.parentElement!;
                     h2.textContent = newName;
+                    input.remove();
                   };
                   
                   input.onblur = save;
                   input.onkeydown = (e) => {
-                    if (e.key === 'Enter') save();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      save();
+                    }
                     if (e.key === 'Escape') {
-                      const h2 = input.parentElement!;
                       h2.textContent = fileName;
+                      input.remove();
                     }
                   };
                   
-                  const h2 = e.currentTarget;
                   h2.textContent = '';
                   h2.appendChild(input);
+                  input.focus();
                   input.select();
                 }}
               >
