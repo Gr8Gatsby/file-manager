@@ -11,6 +11,7 @@ import { JsonAssociationManager } from './JsonAssociationManager';
 import { fileDB } from '@/lib/db';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { JsonDataMapper, DataMapping } from './JsonDataMapper';
 
 interface HTMLEditorProps {
   fileId: string;
@@ -28,7 +29,7 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   const [preview, setPreview] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [isValidating, setIsValidating] = useState(false);
-  const [associatedData, setAssociatedData] = useState<Array<{ name: string; data: any }>>([]);
+  const [associatedData, setAssociatedData] = useState<Array<{ name: string; data: any; mapping?: DataMapping[] }>>([]);
   const [lastInjection, setLastInjection] = useState<{ name: string; timestamp: number } | null>(null);
   const [validationResults, setValidationResults] = useState<Map<string, { isValid: boolean; errors: string[] }>>(new Map());
 
@@ -119,6 +120,9 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
     .validation-success {
       color: #22c55e;
     }
+    .data-updated {
+      animation: highlight 1s ease-out;
+    }
   </style>
 </head>
 <body>
@@ -127,16 +131,59 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
   <script>
     // Store all JSON data in a global object
     window.jsonDataStore = {};
+    window.dataMappings = {};
 
     window.addEventListener('message', function(event) {
       if (event.data.type === 'jsonData') {
-        const prevData = window.jsonDataStore[event.data.payload.title];
+        const { title, data, mapping } = event.data.payload;
+        const prevData = window.jsonDataStore[title];
         const isUpdate = prevData !== undefined;
         
-        // Store the data
-        window.jsonDataStore[event.data.payload.title] = event.data.payload.data;
+        // Store the data and mapping
+        window.jsonDataStore[title] = data;
+        window.dataMappings[title] = mapping || [];
         
-        // Update or create data indicator
+        // Apply mappings if available
+        if (mapping && mapping.length > 0) {
+          mapping.forEach(map => {
+            const getValue = (obj, path) => {
+              return path.split('.').reduce((acc, part) => {
+                if (part.includes('[*]')) {
+                  const arrayPath = part.replace('[*]', '');
+                  return acc[arrayPath]?.map(item => item).join(', ') || '';
+                }
+                return acc?.[part];
+              }, obj);
+            };
+
+            const value = getValue(data, map.jsonPath);
+            const targets = document.querySelectorAll(map.targetSelector);
+            
+            targets.forEach(target => {
+              if (!target) return;
+              
+              switch (map.updateType) {
+                case 'text':
+                  target.textContent = value;
+                  break;
+                case 'html':
+                  target.innerHTML = value;
+                  break;
+                case 'attribute':
+                  if (map.attributeName) {
+                    target.setAttribute(map.attributeName, value);
+                  }
+                  break;
+              }
+              
+              // Add animation class
+              target.classList.add('data-updated');
+              setTimeout(() => target.classList.remove('data-updated'), 1000);
+            });
+          });
+        }
+        
+        // Update indicator content
         let indicator = document.querySelector('.json-data-indicator');
         if (!indicator) {
           indicator = document.createElement('div');
@@ -144,31 +191,30 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
           document.body.appendChild(indicator);
         }
 
-        // Update indicator content
         indicator.innerHTML = Object.keys(window.jsonDataStore)
           .map(key => {
-            const isLatest = key === event.data.payload.title;
+            const isLatest = key === title;
+            const mappingCount = window.dataMappings[key]?.length || 0;
             return \`
               <div class="json-data-item \${isLatest && isUpdate ? 'updated' : ''}">
                 \${isLatest ? '<div class="update-indicator"></div>' : ''}
-                Data from: \${key}
+                \${key} (\${mappingCount} mappings)
               </div>
             \`;
           })
           .join('');
         
-        // Dispatch custom event for each data update
-        const dataEvent = new CustomEvent('jsonDataReceived', {
+        // Dispatch custom events
+        window.dispatchEvent(new CustomEvent('jsonDataReceived', {
           detail: {
-            source: event.data.payload.title,
-            data: event.data.payload.data,
+            source: title,
+            data,
             allData: window.jsonDataStore,
-            isUpdate
+            isUpdate,
+            mapping
           }
-        });
-        window.dispatchEvent(dataEvent);
+        }));
         
-        // Custom event for real-time preview updates
         window.dispatchEvent(new CustomEvent('contentUpdated'));
       }
     });
@@ -363,6 +409,20 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
               className="flex-1 font-mono text-sm min-h-[400px] resize-none"
               placeholder="Enter HTML content..."
             />
+            {associatedData.map((data, index) => (
+              <div key={data.name} className="mt-4">
+                <h4 className="text-sm font-medium mb-2">Mapping for {data.name}</h4>
+                <JsonDataMapper
+                  jsonData={data.data}
+                  initialMapping={data.mapping}
+                  onMappingChange={(mapping) => {
+                    const updatedData = [...associatedData];
+                    updatedData[index] = { ...data, mapping };
+                    setAssociatedData(updatedData);
+                  }}
+                />
+              </div>
+            ))}
           </div>
         </ResizablePanel>
         
@@ -400,17 +460,19 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
                         title: data.name,
                         data: data.data,
                         isValid: data.isValid,
-                        validationErrors: data.validationErrors
+                        validationErrors: data.validationErrors,
+                        mapping: data.mapping
                       }
                     };
                     iframe.contentWindow?.postMessage(message, '*');
                     
                     setLastInjection({ name: data.name, timestamp: Date.now() });
                     
-                    // Show a more detailed toast for each injection
                     toast({
                       title: 'Data Injected',
-                      description: `${data.name} data injected with ${Object.keys(data.data).length} properties`,
+                      description: `${data.name} data injected with ${
+                        data.mapping ? `${data.mapping.length} mappings` : 'no mappings'
+                      }`,
                       duration: 3000
                     });
                   });

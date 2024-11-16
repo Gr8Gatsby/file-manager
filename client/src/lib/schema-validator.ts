@@ -4,6 +4,10 @@ export interface ValidationResult {
   isValid: boolean;
   errors: string[];
   schema?: z.ZodType;
+  mappingValidation?: {
+    isValid: boolean;
+    errors: string[];
+  };
 }
 
 export class SchemaValidator {
@@ -43,12 +47,68 @@ export class SchemaValidator {
     }
   }
 
-  static validateJsonWithHTML(jsonData: any, html: string): ValidationResult {
+  static validateMapping(mapping: any[], jsonData: any): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    mapping.forEach((map, index) => {
+      if (!map.jsonPath || !map.targetSelector || !map.updateType) {
+        errors.push(`Mapping ${index + 1}: Missing required fields`);
+        return;
+      }
+
+      // Validate JSON path exists
+      const pathParts = map.jsonPath.split('.');
+      let current = jsonData;
+      for (const part of pathParts) {
+        if (part.includes('[*]')) {
+          const arrayPath = part.replace('[*]', '');
+          if (!Array.isArray(current?.[arrayPath])) {
+            errors.push(`Mapping ${index + 1}: Invalid array path '${map.jsonPath}'`);
+            break;
+          }
+          current = current[arrayPath];
+        } else {
+          if (current?.[part] === undefined) {
+            errors.push(`Mapping ${index + 1}: Path '${map.jsonPath}' not found in JSON data`);
+            break;
+          }
+          current = current[part];
+        }
+      }
+
+      // Validate update type and attribute name
+      if (map.updateType === 'attribute' && !map.attributeName) {
+        errors.push(`Mapping ${index + 1}: Attribute name is required for attribute updates`);
+      }
+
+      // Validate selector syntax
+      try {
+        document.createElement('div').querySelector(map.targetSelector);
+      } catch (error) {
+        errors.push(`Mapping ${index + 1}: Invalid CSS selector '${map.targetSelector}'`);
+      }
+    });
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  static validateJsonWithHTML(jsonData: any, html: string, mapping?: any[]): ValidationResult {
     const schema = this.extractSchemaFromHTML(html);
-    if (!schema) {
-      return { isValid: true, errors: [] }; // No schema defined, consider valid
+    const schemaValidation = schema ? this.validateJsonAgainstSchema(jsonData, schema) : { isValid: true, errors: [] };
+    
+    let mappingValidation = { isValid: true, errors: [] };
+    if (mapping && mapping.length > 0) {
+      mappingValidation = this.validateMapping(mapping, jsonData);
     }
-    return this.validateJsonAgainstSchema(jsonData, schema);
+
+    return {
+      ...schemaValidation,
+      mappingValidation,
+      isValid: schemaValidation.isValid && mappingValidation.isValid
+    };
   }
 
   static generateSchemaFromJson(json: any): z.ZodType {
