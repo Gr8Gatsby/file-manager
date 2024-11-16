@@ -218,10 +218,10 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
   const startRename = useCallback(() => {
     if (!file || !onRename || isRenaming) return;
     
-    setIsRenaming(true);
     const h2 = document.querySelector('[data-file-name]');
     if (!h2) return;
 
+    setIsRenaming(true);
     const fileName = file.name;
     const extension = fileName.substring(fileName.lastIndexOf('.'));
     const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
@@ -231,22 +231,20 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
     input.value = nameWithoutExt;
     input.className = 'text-lg font-semibold w-full p-1 rounded border focus:outline-none focus:ring-1 focus:ring-primary';
     
-    const save = () => handleRename(input);
-    
     input.onblur = () => {
-      save();
+      handleRename(input);
       h2.textContent = fileNameRef.current;
     };
     
     input.onkeydown = (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        save();
+        handleRename(input);
         h2.textContent = fileNameRef.current;
       }
       if (e.key === 'Escape') {
-        h2.textContent = fileNameRef.current;
         setIsRenaming(false);
+        h2.textContent = fileNameRef.current;
       }
     };
     
@@ -278,7 +276,12 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange, onRenam
                 <h2 
                   data-file-name
                   className="text-lg font-semibold truncate flex-1 cursor-text"
-                  onDoubleClick={() => startRename()}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!file || !onRename || isRenaming) return;
+                    startRename();
+                  }}
                 >
                   {file.name}
                 </h2>
