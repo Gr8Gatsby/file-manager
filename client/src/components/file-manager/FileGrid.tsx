@@ -123,7 +123,9 @@ export function FileGrid({ files, onDelete, onSelect, onRename }: FileGridProps)
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="bg-muted hover:bg-muted/80">
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (deleteId) onDelete(deleteId);
