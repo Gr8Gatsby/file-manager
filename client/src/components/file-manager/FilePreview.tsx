@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { VirtualizedList } from '@/components/ui/virtualized-list';
-import { validateHTML, sanitizeHTML } from '@/lib/html-utils';
+import { validateHTML, sanitizeHTML, formatHTML } from '@/lib/html-utils';
 import { Switch } from '@/components/ui/switch';
 import { useTheme } from '@/hooks/use-theme';
 import { compressBlob } from '@/lib/compression';
@@ -341,7 +341,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                       <div className="relative">
                         {isEditing ? (
                           <Editor
-                            height="70vh"
+                            height="100%"
                             defaultLanguage="html"
                             defaultValue={content}
                             theme={theme === 'dark' ? 'vs-dark' : 'light'}
@@ -352,8 +352,11 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                               lineNumbers: 'on',
                               roundedSelection: false,
                               scrollBeyondLastLine: false,
-                              automaticLayout: true
+                              automaticLayout: true,
+                              formatOnPaste: true,
+                              formatOnType: true
                             }}
+                            className="min-h-[70vh]"
                           />
                         ) : (
                           <>
@@ -395,7 +398,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                               </div>
                             ) : (
                               <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                                {htmlContent?.split('\n').map((line, i) => (
+                                {(file.type === 'text/html' ? formatHTML(content) : content).split('\n').map((line, i) => (
                                   <div key={i} className="px-2 hover:bg-muted-foreground/5">
                                     {line}
                                   </div>
@@ -425,7 +428,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                       <div className="relative">
                         {isEditing ? (
                           <Editor
-                            height="70vh"
+                            height="100%"
                             defaultLanguage="json"
                             defaultValue={typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
                             theme={theme === 'dark' ? 'vs-dark' : 'light'}
@@ -451,6 +454,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                               formatOnPaste: true,
                               formatOnType: true
                             }}
+                            className="min-h-[70vh]"
                           />
                         ) : (
                           <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">

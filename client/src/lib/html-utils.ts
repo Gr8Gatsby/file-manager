@@ -48,3 +48,37 @@ export function sanitizeHTML(content: string): string {
     RETURN_DOM: false
   });
 }
+
+export function formatHTML(html: string): string {
+  const beautify = (str: string, level: number = 0): string => {
+    const indent = '  '.repeat(level);
+    const tokens = str.split(/(<\/?[^>]+>)/g);
+    let result = '';
+    let newLevel = level;
+
+    tokens.forEach(token => {
+      if (!token.trim()) return;
+      
+      if (token.startsWith('</')) {
+        newLevel--;
+        result += indent + token + '\n';
+      } else if (token.startsWith('<') && !token.endsWith('/>') && !token.startsWith('<!') && !token.startsWith('<?')) {
+        result += indent + token + '\n';
+        if (!token.startsWith('<script') && !token.startsWith('<style')) {
+          newLevel++;
+        }
+      } else {
+        result += indent + token.trim() + '\n';
+      }
+    });
+    
+    return result;
+  };
+
+  try {
+    return beautify(html);
+  } catch (error) {
+    console.warn('HTML formatting failed:', error);
+    return html;
+  }
+}
