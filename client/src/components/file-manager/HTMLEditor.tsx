@@ -401,12 +401,12 @@ export function HTMLEditor({ fileId, onSave, onCancel, initialContent = '' }: HT
         ))}
       </div>
 
-      <ResizablePanelGroup direction="horizontal">
+      <ResizablePanelGroup direction="horizontal" className="h-full">
         <ResizablePanel defaultSize={50}>
-          <div className="h-full flex flex-col overflow-y-auto">
+          <div className="h-full flex flex-col overflow-hidden">
             <Textarea
               {...register('content')}
-              className="flex-1 font-mono text-sm min-h-[400px] resize-none"
+              className="flex-1 font-mono text-sm h-full overflow-y-auto resize-none"
               placeholder="Enter HTML content..."
             />
             {associatedData.map((data, index) => (
