@@ -199,10 +199,6 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
 
   if (!file) return null;
 
-  const htmlContent = file.type === 'text/html' && typeof content === 'string' 
-    ? sanitizedContent 
-    : null;
-
   const canEdit = file && (
     (file.type === 'text/html' && typeof content === 'string') ||
     (file.type === 'application/json' && (typeof content === 'string' || content !== null))
@@ -290,22 +286,32 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                   <div className="h-full flex flex-col">
                     {file.type === 'text/html' && typeof content === 'string' && (
                       <div className="flex-1 relative">
+                        <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setViewMode(v => v === 'code' ? 'preview' : 'code')}
+                            className="min-w-[100px]"
+                          >
+                            {viewMode === 'code' ? (
+                              <><Eye className="h-4 w-4 mr-2" /> Preview</>
+                            ) : (
+                              <><Code className="h-4 w-4 mr-2" /> Code</>
+                            )}
+                          </Button>
+
+                          <div className="flex items-center gap-2 ml-4">
+                            <span className="text-sm text-muted-foreground">Safe</span>
+                            <Switch
+                              checked={htmlMode === 'raw'}
+                              onCheckedChange={(checked) => setHtmlMode(checked ? 'raw' : 'safe')}
+                            />
+                            <span className="text-sm text-muted-foreground">Raw</span>
+                          </div>
+                        </div>
+
                         {isEditing ? (
                           <div className="h-full flex flex-col">
-                            <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setViewMode(v => v === 'code' ? 'preview' : 'code')}
-                                className="min-w-[100px]"
-                              >
-                                {viewMode === 'code' ? (
-                                  <><Eye className="h-4 w-4 mr-2" /> Preview</>
-                                ) : (
-                                  <><Code className="h-4 w-4 mr-2" /> Code</>
-                                )}
-                              </Button>
-                            </div>
                             <Editor
                               height="100%"
                               defaultLanguage="html"
@@ -327,33 +333,21 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                           </div>
                         ) : (
                           <>
-                            <div className="sticky top-0 z-10 flex items-center gap-2 mb-4 p-2 bg-background/95 backdrop-blur-sm border-b">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setViewMode(v => v === 'code' ? 'preview' : 'code')}
-                                className="min-w-[100px]"
-                              >
-                                {viewMode === 'code' ? (
-                                  <><Eye className="h-4 w-4 mr-2" /> Preview</>
-                                ) : (
-                                  <><Code className="h-4 w-4 mr-2" /> Code</>
-                                )}
-                              </Button>
-                            </div>
-
                             {viewMode === 'preview' ? (
                               <div className="relative w-full h-[calc(100vh-12rem)]">
+                                <div className="absolute top-2 right-2 px-3 py-1.5 text-sm bg-background/80 backdrop-blur-sm rounded-md border">
+                                  Previewing {htmlMode} HTML
+                                </div>
                                 <iframe
-                                  srcDoc={htmlContent || ''}
+                                  srcDoc={htmlMode === 'raw' ? content : sanitizedContent || ''}
                                   className="w-full h-full rounded-lg border bg-white"
-                                  sandbox="allow-same-origin"
+                                  sandbox={htmlMode === 'raw' ? 'allow-same-origin allow-scripts' : 'allow-same-origin'}
                                   title="HTML Preview"
                                 />
                               </div>
                             ) : (
                               <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                                {formatHTML(content).split('\n').map((line, i) => (
+                                {(htmlMode === 'raw' ? content : sanitizedContent || '').split('\n').map((line, i) => (
                                   <div key={i} className="px-2 hover:bg-muted-foreground/5">
                                     {line}
                                   </div>
@@ -390,7 +384,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                           </div>
                         ) : (
                           <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
-                            {JSON.stringify(content, null, 2)}
+                            {typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
                           </pre>
                         )}
                       </div>
@@ -399,7 +393,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                     {file.type.startsWith('image/') && content && (
                       <div className="relative">
                         <img
-                          src={content}
+                          src={typeof content === 'string' ? content : ''}
                           alt={file.name}
                           className="max-w-full h-auto rounded-lg mx-auto"
                         />
@@ -411,7 +405,7 @@ export function FilePreview({ file, onClose, isEditing, onEditingChange }: FileP
                       </div>
                     )}
 
-                    {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && (
+                    {Array.isArray(content) && content.length > 0 && (
                       <VirtualizedList
                         data={content}
                         rowHeight={40}
