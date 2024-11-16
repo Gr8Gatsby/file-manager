@@ -75,9 +75,7 @@ export function FileManager() {
   const handleFileSelect = async (id: string, editMode: boolean = false) => {
     const file = await fileDB.getFile(id);
     setSelectedFile(file);
-    if (editMode) {
-      setIsEditing(true);
-    }
+    setIsEditing(editMode); // Set edit mode based on the parameter
   };
 
   const filteredFiles = useMemo(() => {

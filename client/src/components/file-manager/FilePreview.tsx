@@ -21,6 +21,8 @@ interface FilePreviewProps {
     data: Blob;
   } | null;
   onClose: () => void;
+  isEditing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
 }
 
 function ErrorBoundary({ children, onError }: { children: React.ReactNode; onError: (error: Error) => void }) {
@@ -35,7 +37,7 @@ function ErrorBoundary({ children, onError }: { children: React.ReactNode; onErr
   return <>{children}</>;
 }
 
-export function FilePreview({ file, onClose }: FilePreviewProps) {
+export function FilePreview({ file, onClose, isEditing, onEditingChange }: FilePreviewProps) {
   const { theme } = useTheme();
   const [content, setContent] = useState<any[] | string | null>(null);
   const [sanitizedContent, setSanitizedContent] = useState<string | null>(null);
@@ -45,7 +47,6 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [viewMode, setViewMode] = useState<'code' | 'preview'>('code');
   const [htmlMode, setHtmlMode] = useState<'safe' | 'raw'>('safe');
-  const [isEditing, setIsEditing] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
 
   const cleanupBlobUrl = useCallback(() => {
@@ -283,7 +284,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setIsEditing(!isEditing)}
+                      onClick={() => onEditingChange?.(!isEditing)}
                       className="gap-2"
                     >
                       {isEditing ? (
