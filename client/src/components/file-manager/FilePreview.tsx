@@ -109,13 +109,20 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
     if (!file || typeof content !== 'string') return;
     
     try {
-      const validationResult = validateHTML(content);
-      if (!validationResult.isValid) {
-        setError(`Invalid HTML: ${validationResult.errors.join(', ')}`);
-        return;
+      let finalContent = content;
+      if (file.type === 'application/json') {
+        // Validate and format JSON before saving
+        const parsed = JSON.parse(content);
+        finalContent = JSON.stringify(parsed, null, 2);
+      } else if (file.type === 'text/html') {
+        const validationResult = validateHTML(content);
+        if (!validationResult.isValid) {
+          setError(`Invalid HTML: ${validationResult.errors.join(', ')}`);
+          return;
+        }
       }
 
-      const blob = new Blob([content], { type: 'text/html' });
+      const blob = new Blob([finalContent], { type: file.type });
       const compressed = await compressBlob(blob);
       
       await fileDB.addFile({
@@ -254,7 +261,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
             <div className="flex items-center justify-between p-3 border-b">
               <h2 className="text-lg font-semibold truncate flex-1 pr-4">{file.name}</h2>
               <div className="flex items-center gap-2">
-                {file.type === 'text/html' && typeof content === 'string' && (
+                {(file.type === 'text/html' || file.type === 'application/json') && typeof content === 'string' && (
                   <>
                     {isEditing && (
                       <Button
@@ -262,6 +269,7 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                         size="sm"
                         onClick={handleSave}
                         className="gap-2"
+                        disabled={!!error}
                       >
                         <Save className="h-4 w-4" />
                         Save
@@ -407,41 +415,60 @@ export function FilePreview({ file, onClose }: FilePreviewProps) {
                       </div>
                     )}
                     
-                    {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && content.length > 0 && (
-                      <div className="h-[calc(100vh-12rem)]">
-                        <VirtualizedList
-                          data={content}
-                          rowHeight={40}
-                          overscan={5}
-                          renderRow={({ index, style }) => (
-                            <div style={style} className="flex gap-2 py-1 border-b">
-                              {Object.entries(content[index]).map(([key, value], i) => (
-                                <div key={`${index}-${key}-${i}`} className="flex-1 min-w-[100px] max-w-[200px] truncate">
-                                  <span className="text-muted-foreground">{key}: </span>
-                                  {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        />
+                    {file.type === 'application/json' && (
+                      <div className="relative">
+                        {isEditing ? (
+                          <Editor
+                            height="70vh"
+                            defaultLanguage="json"
+                            defaultValue={typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
+                            theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                            onChange={(value) => {
+                              try {
+                                // Validate JSON as user types
+                                if (value) {
+                                  JSON.parse(value);
+                                  setError(null);
+                                }
+                                setContent(value || '');
+                              } catch (err) {
+                                setError('Invalid JSON format');
+                              }
+                            }}
+                            options={{
+                              minimap: { enabled: false },
+                              fontSize: 14,
+                              lineNumbers: 'on',
+                              roundedSelection: false,
+                              scrollBeyondLastLine: false,
+                              automaticLayout: true,
+                              formatOnPaste: true,
+                              formatOnType: true
+                            }}
+                          />
+                        ) : (
+                          <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg font-mono text-sm overflow-auto">
+                            {typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
+                          </pre>
+                        )}
                       </div>
                     )}
-                    
-                    {file.type === 'application/json' && content && (
-                      <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg">
-                        {JSON.stringify(content, null, 2)}
-                      </pre>
-                    )}
 
-                    {!file.type.startsWith('image/') && 
-                      file.type !== 'text/html' &&
-                      file.type !== 'text/csv' && 
-                      file.type !== 'text/tab-separated-values' && 
-                      file.type !== 'application/json' && 
-                      typeof content === 'string' && (
-                      <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg">
-                        {content}
-                      </pre>
+                    {(file.type === 'text/csv' || file.type === 'text/tab-separated-values') && Array.isArray(content) && (
+                      <VirtualizedList
+                        data={content}
+                        rowHeight={40}
+                        overscan={5}
+                        renderRow={({ index, style }) => (
+                          <div key={index} style={style} className="flex gap-2 py-1 border-b">
+                            {Object.values(content[index]).map((cell, i) => (
+                              <div key={i} className="flex-1 truncate">
+                                {typeof cell === 'object' ? JSON.stringify(cell) : String(cell)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      />
                     )}
                   </>
                 )}
