@@ -10,6 +10,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { useToast } from '@/hooks/use-toast';
 import { FilePlus, FileCode, FileCog } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RenameDialog } from '@/components/file-manager/RenameDialog';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -26,6 +27,7 @@ export function FileManager() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [fileType, setFileType] = useState('all');
   const [isEditing, setIsEditing] = useState(false);
+  const [renameFile, setRenameFile] = useState<{ id: string; name: string } | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -78,7 +80,7 @@ export function FileManager() {
       });
 
       loadFiles();
-      handleFileSelect(id, true);
+      setRenameFile({ id, name: fileName }); // Trigger rename dialog
     } catch (error) {
       toast({
         title: "Error",
@@ -86,6 +88,38 @@ export function FileManager() {
         variant: "destructive",
       });
     }
+  };
+
+  const handleRename = async (newName: string) => {
+    if (!renameFile) return;
+    
+    const file = await fileDB.getFile(renameFile.id);
+    if (!file) return;
+
+    try {
+      await fileDB.addFile({
+        ...file,
+        name: newName
+      });
+
+      toast({
+        title: "File renamed",
+        description: `Successfully renamed to ${newName}`,
+      });
+
+      setRenameFile(null);
+      loadFiles();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to rename file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleStartRename = (id: string, name: string) => {
+    setRenameFile({ id, name });
   };
 
   const handleUpload = async (fileList: FileList) => {
@@ -228,6 +262,7 @@ export function FileManager() {
             files={filteredFiles}
             onDelete={handleDelete}
             onSelect={handleFileSelect}
+            onRename={handleStartRename}
           />
         </div>
       </main>
@@ -240,6 +275,13 @@ export function FileManager() {
         }}
         isEditing={isEditing}
         onEditingChange={setIsEditing}
+      />
+
+      <RenameDialog
+        open={!!renameFile}
+        onOpenChange={(open) => !open && setRenameFile(null)}
+        initialName={renameFile?.name ?? ''}
+        onRename={handleRename}
       />
     </div>
   );

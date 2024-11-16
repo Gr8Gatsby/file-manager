@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { File, FileText, Image, Trash2, Edit2 } from 'lucide-react';
+import { File, FileText, Image, Trash2, Edit2, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import {
   Card,
@@ -31,9 +31,10 @@ interface FileGridProps {
   }>;
   onDelete: (id: string) => void;
   onSelect: (id: string, editMode?: boolean) => void;
+  onRename: (id: string, name: string) => void;
 }
 
-export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
+export function FileGrid({ files, onDelete, onSelect, onRename }: FileGridProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const getFileIcon = (type: string) => {
@@ -63,6 +64,17 @@ export function FileGrid({ files, onDelete, onSelect }: FileGridProps) {
               <CardHeader className="flex flex-row items-center justify-between p-1.5">
                 {getFileIcon(file.type)}
                 <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRename(file.id, file.name);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
                   {(file.type === 'application/json' || file.type === 'text/html') && (
                     <Button
                       variant="ghost"
